@@ -4,8 +4,10 @@ const { app, BrowserWindow, ipcMain, dialog, utilityProcess } = require('electro
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { parseEpub } = require('../parse/epub');
+const { makeCache } = require('./clip-cache');
 
 let mainWindow = null;
+let clipCache = null; // lazily created after app is ready (needs userData path)
 
 // --- TTS utilityProcess (the Kokoro engine runs in its own Node child) ---------
 // Forked lazily on first synthesize/ping, kept alive for the app's lifetime so the
@@ -137,8 +139,14 @@ ipcMain.handle('save-settings', async (_evt, incoming) => {
 // res.wav is the typed array carried in the utilityProcess message; Electron
 // structured-clones it across the renderer IPC boundary, so return it as-is.
 ipcMain.handle('synthesize', async (_evt, { text, voice }) => {
+  voice = voice || 'af_heart';
+  clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
+  const hit = await clipCache.get(text, voice);
+  if (hit) return { wav: hit, sampleRate: 24000 }; // Kokoro is fixed 24 kHz
   const res = await ttsRequest({ type: 'synthesize', text, voice });
-  return { wav: res.wav, sampleRate: res.sampleRate };
+  const bytes = res.wav;
+  await clipCache.put(text, voice, bytes);
+  return { wav: bytes, sampleRate: res.sampleRate };
 });
 
 app.whenReady().then(() => {
