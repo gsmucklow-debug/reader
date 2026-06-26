@@ -41,10 +41,20 @@ function getTtsChild() {
   return ttsChild;
 }
 
-function ttsRequest(payload) {
+function ttsRequest(payload, timeoutMs = 60000) {
   const id = ++ttsSeq;
   return new Promise((resolve, reject) => {
-    ttsPending.set(id, { resolve, reject });
+    // Guards against a wedged child: if its async work never settles (a stalled
+    // model load or a hung generate posts no reply and fires no 'exit'), the
+    // pending entry would leak and the renderer's await would hang forever.
+    // Generous default so a slow first cold-CPU load isn't false-tripped.
+    const timer = setTimeout(() => {
+      if (ttsPending.delete(id)) reject(new Error('TTS request timed out'));
+    }, timeoutMs);
+    ttsPending.set(id, {
+      resolve: (m) => { clearTimeout(timer); resolve(m); },
+      reject: (e) => { clearTimeout(timer); reject(e); },
+    });
     getTtsChild().postMessage({ id, ...payload });
   });
 }

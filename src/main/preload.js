@@ -3,7 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Minimal, explicit surface exposed to the renderer. No Node, no ipcRenderer
-// leaked directly — only these three calls.
+// leaked directly — only these calls.
 contextBridge.exposeInMainWorld('reader', {
   // Open the native file picker; resolves to { doc, fileName } or null if cancelled.
   pickAndParse: () => ipcRenderer.invoke('pick-and-parse'),
