@@ -52,3 +52,7 @@ test('key/eq round-trip', () => {
   assert.ok(C.eq(A(1, 0, 1), A(1, 0, 1)));
   assert.ok(!C.eq(A(1, 0, 1), A(1, 0, 0)));
 });
+
+test('textAt returns the sentence at an address', () => {
+  assert.strictEqual(C.textAt(doc, A(0, 0, 1)), 'a1');
+});
