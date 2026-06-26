@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld('reader', {
   // Global comfort settings (font/theme/textSize/pageWidth/viewMode).
   loadSettings: () => ipcRenderer.invoke('load-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+
+  // Renderer calls reader.synthesize(text, { voice }); we send ONE object so the
+  // main handler can destructure { text, voice } — keep this arg shape everywhere.
+  synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
 });
