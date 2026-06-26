@@ -20,8 +20,17 @@ function makeCache(dir) {
       catch { return null; }
     },
     async put(text, voice, bytes) {
-      await ensure();
-      await fs.writeFile(path.join(dir, clipKey(text, voice)), Buffer.from(bytes));
+      // Best-effort, durable cache write: the WAV bytes are already in hand, so a
+      // write failure (disk full / permissions) must never fail the synth path.
+      // Write to a unique temp file then atomically rename, so a kill mid-write
+      // can't leave a truncated .wav that get() would later serve as a poisoned hit.
+      try {
+        await ensure();
+        const final = path.join(dir, clipKey(text, voice));
+        const tmp = `${final}.${process.pid}.${Date.now()}.tmp`;
+        await fs.writeFile(tmp, Buffer.from(bytes));
+        await fs.rename(tmp, final);
+      } catch { /* best-effort cache; never fail the synth path */ }
     },
   };
 }
