@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test/smoke/screenshots/
+
+# Phase 2: the bundled Kokoro model is fetched on build, not committed (~85 MB).
+# Run `node scripts/fetch-model.js` before `npm run dist`.
+assets/models/
+
+# Phase 2 throwaway spike output
+test/manual/spike.wav

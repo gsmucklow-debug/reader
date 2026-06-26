@@ -1,0 +1,288 @@
+/* Reader — Phase 1.5 reading shell.
+   Calm, low-cognitive-load: warm paper, generous spacing, quiet bars top & bottom.
+   The reading view paginates via a CSS multi-column flow (layout-only — the
+   per-sentence spans are never restructured). */
+
+:root {
+  --reading-font-size: 20px;
+  --reading-max-width: 46rem;
+  --reading-line-height: 1.7;
+
+  --ui-font: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  /* The active reading typeface. Default is the classic serif stack; the font
+     picker swaps this to a bundled family. */
+  --reading-font: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+
+  /* Gap between pages in the multi-column flow. paginate() reads this exact
+     value so its math matches the rendered geometry. */
+  --page-gap: 48px;
+}
+
+/* ---- Themes ---- */
+/* `color-scheme` makes native UI (notably the scroll-mode scrollbar) match the
+   theme — dark scrollbars in dark mode instead of a bright light one. */
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: #efe9dc;        /* warm paper */
+  --surface: #faf6ee;
+  --ink: #2c2a26;
+  --ink-soft: #6b6557;
+  --line: #ded5c2;
+  --accent: #7a5c3e;
+  --highlight: #fbe7b6; /* Phase 2 sentence highlight */
+}
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16161a;
+  --surface: #1f1f25;
+  --ink: #e7e3da;
+  --ink-soft: #a39e92;
+  --line: #34343d;
+  --accent: #cdb389;
+  --highlight: #4a431f;
+}
+
+* { box-sizing: border-box; }
+
+/* ID rules below set `display`, which would otherwise beat the `hidden`
+   attribute's UA rule. Keep `hidden` authoritative for show/hide toggling. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--ui-font);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- Top bar ---- */
+#topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+.controls { display: flex; align-items: center; gap: 10px; }
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.35; cursor: default; }
+button:disabled:hover { border-color: var(--line); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; }
+.segmented button + button { border-left: 1px solid var(--line); }
+.segmented button.active { background: var(--accent); color: #fff; }
+
+/* ---- Settings panel ---- */
+#settings-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.setting { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); }
+input[type="range"] { accent-color: var(--accent); }
+
+/* Font picker: each option previews in its own typeface ("preview by looking"). */
+.setting-font { align-items: flex-start; }
+.font-list { display: flex; flex-wrap: wrap; gap: 6px; max-width: 540px; }
+.font-list button {
+  padding: 6px 12px;
+  font-size: 1rem;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.font-list button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- Stage ---- */
+#stage { flex: 1 1 auto; position: relative; overflow: hidden; min-height: 0; }
+
+#empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-card {
+  text-align: center;
+  color: var(--ink-soft);
+  border: 2px dashed var(--line);
+  border-radius: 16px;
+  padding: 48px 64px;
+}
+.empty-card h1 { margin: 0 0 8px; font-size: 2rem; color: var(--ink); }
+
+/* The clipping window. Page margins are padding HERE; the column flow inside
+   carries no padding so column-width can equal #reading's content width exactly. */
+#reading-viewport {
+  position: relative;
+  height: 100%;
+  margin: 0 auto;
+  padding: 36px 28px;
+}
+
+#reading {
+  position: relative; /* offsetLeft of spans is measured against this box */
+  height: 100%;
+  font-family: var(--reading-font);
+  font-size: var(--reading-font-size);
+  line-height: var(--reading-line-height);
+  color: var(--ink);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.chapter { margin: 0; }
+.chapter-title { font-size: 1.5em; color: var(--ink); margin: 0 0 0.8em; }
+.para { margin: 0 0 1em; }
+
+/* A sentence is its own element so Phase 2 can highlight + seek it. */
+.sentence.is-reading { background: var(--highlight); border-radius: 4px; }
+
+/* ---- Paged modes (single + two-page): one multi-column flow that overflows
+        horizontally; flipping is a translateX set by app.js. ---- */
+body[data-view="single"] #reading-viewport,
+body[data-view="two"] #reading-viewport {
+  max-width: var(--reading-max-width);
+  overflow: hidden;
+}
+body[data-view="two"] #reading-viewport {
+  /* two readable columns + the gap between them */
+  max-width: calc(var(--reading-max-width) * 2 + var(--page-gap));
+}
+body[data-view="single"] #reading,
+body[data-view="two"] #reading {
+  column-gap: var(--page-gap);
+  column-fill: auto;          /* fill each column fully before starting the next */
+  /* column-width + transform are set imperatively by paginate() / flip(). */
+  transition: transform 180ms ease;
+}
+
+/* ---- Scroll mode: one bounded, vertically-scrolling column. ---- */
+body[data-view="continuous"] #reading-viewport {
+  max-width: var(--reading-max-width);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+body[data-view="continuous"] #reading {
+  height: auto;
+  transform: none !important;
+  column-width: auto !important;
+  padding-bottom: 8vh;
+}
+
+/* ---- TOC panel (slides in over the left) ---- */
+#toc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 17, 12, 0.35);
+  z-index: 60;
+}
+#toc-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 80vw;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.18);
+  z-index: 61;
+  padding: 18px 0;
+  overflow-y: auto;
+  transform: translateX(-100%);     /* off-screen until opened */
+  transition: transform 200ms ease;
+}
+#toc-panel.open { transform: translateX(0); }   /* slides in over the left */
+#toc-panel h2 {
+  margin: 0 0 10px;
+  padding: 0 22px;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+#toc-list { list-style: none; margin: 0; padding: 0; }
+#toc-list li {
+  padding: 10px 22px;
+  color: var(--ink);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+#toc-list li:hover { background: var(--bg); }
+#toc-list li.current {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- Bottom control strip ---- */
+#bottom-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+#bottom-bar button {
+  min-width: 44px;
+  padding: 6px 12px;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+#orientation {
+  min-width: 240px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+/* ---- Drop overlay ---- */
+#drop-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(40, 35, 28, 0.55);
+  color: #fff;
+  font-size: 1.6rem;
+  z-index: 50;
+}
+#drop-overlay span {
+  border: 3px dashed rgba(255, 255, 255, 0.8);
+  border-radius: 18px;
+  padding: 40px 70px;
+}

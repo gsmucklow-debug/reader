@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Lock the renderer down: no remote content, no inline-injected book markup runs.
+         font-src 'self' lets the bundled local @font-face .woff2 files load; nothing
+         is ever fetched from a network/CDN. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self';"
+    />
+    <title>Reader</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="fonts.css" />
+  </head>
+  <body data-theme="light" data-view="single">
+    <header id="topbar">
+      <div class="brand">Reader</div>
+      <nav class="controls">
+        <button type="button" id="toc-btn" aria-label="Table of contents" title="Chapters (t)">
+          ☰ Chapters
+        </button>
+        <div class="segmented" id="view-toggle" role="group" aria-label="View mode">
+          <button type="button" data-view="single" class="active">Single page</button>
+          <button type="button" data-view="two">Two-page</button>
+          <button type="button" data-view="continuous">Scroll</button>
+        </div>
+        <button type="button" id="add-btn" class="primary">Add book</button>
+        <button type="button" id="settings-btn" aria-label="Comfort settings" title="Comfort settings">
+          Aa
+        </button>
+      </nav>
+    </header>
+
+    <section id="settings-panel" hidden aria-label="Comfort settings">
+      <div class="setting setting-font">
+        <span>Font</span>
+        <div class="font-list" id="font-list" role="listbox" aria-label="Reading font"></div>
+      </div>
+      <div class="setting">
+        <span>Text size</span>
+        <div class="segmented">
+          <button type="button" id="font-smaller" aria-label="Smaller text">A−</button>
+          <button type="button" id="font-larger" aria-label="Larger text">A+</button>
+        </div>
+      </div>
+      <div class="setting">
+        <span>Theme</span>
+        <div class="segmented" id="theme-toggle">
+          <button type="button" data-theme="light" class="active">Light</button>
+          <button type="button" data-theme="dark">Dark</button>
+        </div>
+      </div>
+      <div class="setting">
+        <label for="width-range">Page width</label>
+        <input id="width-range" type="range" min="34" max="80" step="2" value="46" />
+      </div>
+    </section>
+
+    <main id="stage">
+      <div id="empty-state">
+        <div class="empty-card">
+          <h1>Reader</h1>
+          <p>Drag an EPUB book here, or click <strong>Add book</strong>.</p>
+        </div>
+      </div>
+      <!-- The clipping window. Page margins live here as padding; the column flow
+           inside (#reading) stays padding-free so column math isn't thrown off. -->
+      <div id="reading-viewport" hidden>
+        <article id="reading"></article>
+      </div>
+    </main>
+
+    <!-- Chapter table of contents — slides in over the left edge. -->
+    <div id="toc-overlay" hidden></div>
+    <aside id="toc-panel" hidden aria-label="Table of contents">
+      <h2>Chapters</h2>
+      <ol id="toc-list"></ol>
+    </aside>
+
+    <footer id="bottom-bar" hidden>
+      <button type="button" id="prev-chapter" aria-label="Previous chapter" title="Previous chapter ([)">⇤</button>
+      <button type="button" id="prev-page" aria-label="Previous page" title="Previous page (←)">‹</button>
+      <div id="orientation" aria-live="polite">&nbsp;</div>
+      <button type="button" id="next-page" aria-label="Next page" title="Next page (→)">›</button>
+      <button type="button" id="next-chapter" aria-label="Next chapter" title="Next chapter (])">⇥</button>
+    </footer>
+
+    <div id="drop-overlay" hidden><span>Drop to open</span></div>
+
+    <!-- render.js + paginate.js define window.ReaderRender / window.ReaderPaginate used by app.js -->
+    <script src="render.js"></script>
+    <script src="paginate.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
