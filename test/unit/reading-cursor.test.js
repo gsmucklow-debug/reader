@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const C = require('../../src/renderer/reading-cursor');
+const { lastAddress, firstAddress } = C;
 
 // 2 chapters; ch0: 2 paragraphs (2 + 1 sentences); ch1: 1 paragraph (2 sentences).
 const doc = {
@@ -55,4 +56,21 @@ test('key/eq round-trip', () => {
 
 test('textAt returns the sentence at an address', () => {
   assert.strictEqual(C.textAt(doc, A(0, 0, 1)), 'a1');
+});
+
+test('lastAddress points at the final sentence of the final chapter', () => {
+  const d = { chapters: [
+    { paragraphs: [ { sentences: ['a', 'b'] } ] },
+    { paragraphs: [ { sentences: ['c'] }, { sentences: ['d', 'e', 'f'] } ] },
+  ] };
+  assert.deepStrictEqual(lastAddress(d), { ci: 1, pi: 1, si: 2 });
+});
+
+test('lastAddress of a one-sentence book equals firstAddress', () => {
+  const d = { chapters: [ { paragraphs: [ { sentences: ['only'] } ] } ] };
+  assert.deepStrictEqual(lastAddress(d), firstAddress(d));
+});
+
+test('lastAddress returns null for an empty doc', () => {
+  assert.strictEqual(lastAddress({ chapters: [] }), null);
 });

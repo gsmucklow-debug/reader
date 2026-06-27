@@ -122,9 +122,23 @@ const eq = (a, b) => !!a && !!b && a.ci === b.ci && a.pi === b.pi && a.si === b.
  */
 const textAt = (doc, a) => doc.chapters[a.ci].paragraphs[a.pi].sentences[a.si];
 
+/**
+ * The last sentence of the book (final sentence, final paragraph, final chapter).
+ * @param {{chapters:Array}} doc
+ * @returns {?{ci:number,pi:number,si:number}} the end address, or null if empty.
+ */
+function lastAddress(doc) {
+  if (!doc || !doc.chapters || doc.chapters.length === 0) return null;
+  const ci = doc.chapters.length - 1;
+  const paras = doc.chapters[ci].paragraphs;
+  const pi = paras.length - 1;
+  const si = paras[pi].sentences.length - 1;
+  return { ci, pi, si };
+}
+
 // Dual-mode export: CommonJS for node:test, browser global for the renderer.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { firstAddress, nextAddress, prevAddress, backParagraph, aheadFrom, key, eq, textAt };
+  module.exports = { firstAddress, nextAddress, prevAddress, backParagraph, aheadFrom, key, eq, textAt, lastAddress };
 } else {
-  globalThis.ReaderCursor = { firstAddress, nextAddress, prevAddress, backParagraph, aheadFrom, key, eq, textAt };
+  globalThis.ReaderCursor = { firstAddress, nextAddress, prevAddress, backParagraph, aheadFrom, key, eq, textAt, lastAddress };
 }
