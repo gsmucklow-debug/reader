@@ -102,15 +102,35 @@
     </aside>
 
     <footer id="bottom-bar" hidden>
-      <button type="button" id="back-para" aria-label="Back one paragraph" title="Back a paragraph">⏮</button>
-      <button type="button" id="back-sent" aria-label="Back one sentence" title="Back a sentence">↶</button>
-      <button type="button" id="play-pause" class="play" aria-label="Play" title="Play / Pause (Space)">▶</button>
-      <button type="button" id="fwd-sent" aria-label="Forward one sentence" title="Forward a sentence">↷</button>
-      <button type="button" id="prev-chapter" aria-label="Previous chapter" title="Previous chapter ([)">⇤</button>
-      <button type="button" id="prev-page" aria-label="Previous page" title="Previous page (←)">‹</button>
+      <!-- Transport icons are inline SVG drawn in currentColor so they follow the
+           theme and never render as colored OS emoji. They're decorative — the
+           accessible name lives on each button's aria-label/title. -->
+      <button type="button" id="back-para" aria-label="Back one paragraph" title="Back a paragraph">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 6h2v12H6V6zm12 0v12l-9-6 9-6z"/></svg>
+      </button>
+      <button type="button" id="back-sent" aria-label="Back one sentence" title="Back a sentence">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+      </button>
+      <button type="button" id="play-pause" class="play" aria-label="Play" title="Play / Pause (Space)">
+        <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7L8 5z"/></svg>
+        <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3v14H7V5zm7 0h3v14h-3V5z"/></svg>
+      </button>
+      <button type="button" id="fwd-sent" aria-label="Forward one sentence" title="Forward a sentence">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg>
+      </button>
+      <button type="button" id="prev-chapter" aria-label="Previous chapter" title="Previous chapter ([)">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 6v12l-9-6 9-6zm9 0v12l-9-6 9-6z"/></svg>
+      </button>
+      <button type="button" id="prev-page" aria-label="Previous page" title="Previous page (←)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+      </button>
       <div id="orientation" aria-live="polite">&nbsp;</div>
-      <button type="button" id="next-page" aria-label="Next page" title="Next page (→)">›</button>
-      <button type="button" id="next-chapter" aria-label="Next chapter" title="Next chapter (])">⇥</button>
+      <button type="button" id="next-page" aria-label="Next page" title="Next page (→)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <button type="button" id="next-chapter" aria-label="Next chapter" title="Next chapter (])">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 6l9 6-9 6V6zm-9 0l9 6-9 6V6z"/></svg>
+      </button>
     </footer>
 
     <div id="drop-overlay" hidden><span>Drop to open</span></div>

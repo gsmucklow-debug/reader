@@ -751,8 +751,10 @@ function scrollSentenceThreeQuarters(el) {
 
 function updatePlayButton() {
   const btn = document.getElementById('play-pause');
-  const on = state.player && state.player.isPlaying();
-  btn.textContent = on ? '⏸' : '▶';
+  const on = !!(state.player && state.player.isPlaying());
+  // CSS swaps the play-triangle / pause-bars SVGs off this class (no glyph writes,
+  // which would clobber the inline <svg> children).
+  btn.classList.toggle('is-playing', on);
   btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
 }
 

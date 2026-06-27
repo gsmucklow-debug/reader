@@ -282,7 +282,17 @@ body[data-view="continuous"] #reading {
   padding: 6px 12px;
   font-size: 1.05rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+/* Inline SVG transport icons follow the button's text color (currentColor). */
+#bottom-bar svg { width: 22px; height: 22px; display: block; }
+
+/* Play/pause: both SVGs live in the button; CSS shows one per state. */
+#play-pause .icon-pause { display: none; }
+#play-pause.is-playing .icon-play { display: none; }
+#play-pause.is-playing .icon-pause { display: block; }
 /* Playback controls — big, easy to hit (design §2). #play-pause is the primary. */
 #back-para, #back-sent, #fwd-sent {
   min-width: 48px;
