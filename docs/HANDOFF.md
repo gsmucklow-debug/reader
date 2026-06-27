@@ -133,26 +133,39 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md)). (b) **macOS still unbuilt** (Phase 1 carryover). (c)
     `goToPageContaining` paged-mode flip was not live-verified (deferred to manual testing — code
     unchanged; the HANDOFF pre-fragmentation-offset caveat still stands if a flip lands wrong).
+- [x] Phase 2.5 plan written & approved (2026-06-27):
+  [`plans/phase-2.5-voice-settings.md`](./plans/phase-2.5-voice-settings.md) — voice picker (+preview),
+  reading speed, end-of-chapter pause; global, persisted. Brainstormed + scoped with the user; ready
+  for a fresh builder session. **Not built yet.**
 
 ---
 
 ## Next up
 
-**Phase 2 is built & planner-verified on Windows. Next: the user's manual gates, then Phase 3 (library + auto-resume).**
+**Phase 2 is built & planner-verified on Windows. The user approved the voice and asked to expose
+voice settings — that plan is written and ready for a fresh builder session.**
 
-1. **User: listen + confirm offline.** Run `npm start`, drag in your books, press Space, and walk
-   the **Phase 2 manual checklist** in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md): voice/sync good,
-   ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and **network-off in the packaged
-   `.exe`**. (The mechanism is smoke-proven; only the *listening* and the *adapter-off* gesture can't
-   be automated.)
-2. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
-   Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`, and
-   the build config lands the model at `Reader.app/Contents/Resources/assets/models` (matches
-   `main.js`). **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper
-   blocks launch — signing/notarization is out of scope, but it's a *loud* failure, not a silent one.
-   Closes the last Phase 1 carryover too.
-3. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
-   from the exact sentence). Recommended: **Sonnet 4.6, medium thinking** (standard UI/CRUD; design §9).
+1. **Build Phase 2.5 — Voice & Playback Settings (plan ready).** A fresh builder session should
+   execute [`plans/phase-2.5-voice-settings.md`](./plans/phase-2.5-voice-settings.md): a curated
+   voice picker (best US/UK male+female) with **▶ preview**, a **reading-speed** slider, and an
+   **end-of-chapter pause** (Off/Short/Longer) — all global, in the "Aa" comfort popover, persisted in
+   `settings.json`. A voice/speed change **restarts the current sentence immediately**. Brainstormed
+   + scoped with the user (2026-06-27). Recommended: **Sonnet 4.6, medium** (mostly settings/UI; the
+   two subtle spots — the cancelable end-of-chapter pause and the cache-key/prefetch-flush — are
+   called out in the plan and unit-tested).
+2. **User: listen + confirm offline (Phase 2).** `npm start`, drag in your books, press Space, walk
+   the **Phase 2 manual checklist** in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md): voice/sync, ¾-up
+   scroll, rewind controls, cross-chapter, instant 2nd play, and **network-off in the packaged
+   `.exe`**. (Mechanism is smoke-proven; only the *listening* + *adapter-off* gesture can't be
+   automated.)
+3. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
+   Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`; the
+   build lands the model at `Reader.app/Contents/Resources/assets/models` (matches `main.js`).
+   **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper blocks launch —
+   out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
+4. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+   from the exact sentence; per-book voice/speed memory becomes possible here). Recommended:
+   **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
 
 > **Carry into Phase 3 (deferred Phase-2 items, by design):** per-book reading-position resume
 > (the clip cache is global/content-addressed today — Phase 3 may add per-book folders); the
