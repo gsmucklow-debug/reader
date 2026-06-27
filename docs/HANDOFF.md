@@ -91,24 +91,76 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     (`parseToc`) → real names, not "Untitled" — **re-confirmed on the user's own books**
     (*Never Let Me Go* → "Part One / Chapter One…", Annihilation/Fever Dream all titled);
     dark-mode scrollbar fixed via `color-scheme`.
+- [x] Phase 2 plan written & approved (2026-06-27):
+  [`plans/phase-2-voice-highlighting.md`](./plans/phase-2-voice-highlighting.md).
+- [x] **Phase 2 — Voice + sentence highlighting: built & planner-verified (2026-06-27, Windows).**
+  Built in this session via **subagent-driven development** — a fresh implementer per task, each
+  gated by an independent spec-compliance review *and* a code-quality review (every review
+  re-verified the work rather than trusting the report), plus a final whole-Phase-2 integration
+  review. **The book now reads itself aloud in Kokoro's voice with the spoken sentence highlighted.**
+  - **The voice is real and offline.** Kokoro-82M (`kokoro-js` + `onnxruntime-node`, **CPU**) runs
+    in an Electron **`utilityProcess`** (off the main thread — ORT inference is synchronous and would
+    jank the UI). The model is **bundled** and loaded with `allowRemoteModels=false`; **no network at
+    runtime** (verified down to the kokoro-js voice loader, which reads bundled `voices/*.bin` via
+    `fs` in Node — the Hugging Face fetch branch is unreachable in the Node build). Default voice
+    **`af_heart`** (Grade-A); the user listened to a sample and approved it.
+  - **One clip per sentence (design §4).** `src/renderer/reading-cursor.js` (pure) walks the
+    sentence sequence; `src/renderer/player.js` (dependency-injected controller) plays clip *N*,
+    highlights it, advances on clip-end, prefetches the next 2, and rewinds by replaying earlier
+    clips. No alignment/timestamps. A content-addressed **on-disk clip cache** (`src/main/clip-cache.js`,
+    `userData/clips`, atomic write) makes rewind/re-read instant (~250× faster on a hit, measured).
+  - **Controls:** Play/Pause (Space), back-a-sentence, back-a-paragraph, forward-a-sentence/paragraph,
+    **click any sentence to start there**. Highlight rides ~¾ up in scroll mode and flips pages in
+    paged modes. Reads across chapter boundaries automatically (mounts the next chapter first) and
+    stops cleanly at book end (the play button resets).
+  - **Voice-agnostic seam:** the renderer only calls `reader.synthesize(text, {voice})` over IPC —
+    swapping to a premium cloud voice later = editing only `src/main/tts-service.js`.
+  - **Independently re-verified by the planner:**
+    - `npm test` → **52/52 green** (31 inherited + new pure-logic tests: `reading-cursor`,
+      `clip-cache`, `player` — incl. tests that *pin* the stale-clip-end token guard, the
+      synth-failure stop-and-retry, and the bounded clip cache).
+    - `npm run smoke` → **PASS**, including a new assertion that drives the **real engine**
+      (click Play → real synth → IPC → decode → play → `.is-reading` appears → **advances** to the
+      next sentence).
+    - **Packaged offline synth proven:** built `dist/Reader-0.1.0-portable.exe`; launched
+      `win-unpacked/Reader.exe` via Playwright and `reader.synthesize` returned a valid WAV
+      (201,644 bytes @ 24 kHz) with the model loaded from `resources/assets/models` and the native
+      `.node` from `app.asar.unpacked` — i.e. the bundled-model + unpacked-binary path resolves in
+      the package.
+  - **Honest caveats / what's still manual:** (a) **voice quality + true network-off** is a human
+    check — the engine is *proven* offline-capable (code forbids network; packaged synth works), but
+    physically toggling the adapter off and *listening* to all 7 books is the user's gate (checklist
+    in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md)). (b) **macOS still unbuilt** (Phase 1 carryover). (c)
+    `goToPageContaining` paged-mode flip was not live-verified (deferred to manual testing — code
+    unchanged; the HANDOFF pre-fragmentation-offset caveat still stands if a flip lands wrong).
 
 ---
 
 ## Next up
 
-**Phase 1.5 is verified. Next: write the Phase 2 plan (voice + highlighting).**
+**Phase 2 is built & planner-verified on Windows. Next: the user's manual gates, then Phase 3 (library + auto-resume).**
 
-1. **User: confirm the Mac build.** On the M5 MacBook run `npm install` then `npm run dist:mac`,
-   double-click the `.dmg`, right-click→Open the app, drag in an EPUB. That closes the only
-   unverified Phase 1 acceptance criterion (the app is confirmed on Windows already). *(Parked —
-   Windows is the focus right now.)*
-2. **Write the Phase 2 plan** (voice + sentence highlighting). The seam is already in place —
-   `src/renderer/app.js` has a documented `highlightSentence(ci, pi, si)` hook and the reading
-   view renders every sentence as `<span class="sentence" data-chapter data-paragraph
-   data-sentence>`, matching `doc.chapters[ci].paragraphs[pi].sentences[si]`. Phase 2 = make
-   one Kokoro clip per sentence, play in order, call that hook, scroll it ~¾ up.
+1. **User: listen + confirm offline.** Run `npm start`, drag in your books, press Space, and walk
+   the **Phase 2 manual checklist** in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md): voice/sync good,
+   ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and **network-off in the packaged
+   `.exe`**. (The mechanism is smoke-proven; only the *listening* and the *adapter-off* gesture can't
+   be automated.)
+2. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
+   Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`, and
+   the build config lands the model at `Reader.app/Contents/Resources/assets/models` (matches
+   `main.js`). **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper
+   blocks launch — signing/notarization is out of scope, but it's a *loud* failure, not a silent one.
+   Closes the last Phase 1 carryover too.
+3. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+   from the exact sentence). Recommended: **Sonnet 4.6, medium thinking** (standard UI/CRUD; design §9).
 
-> Recommended for Phase 2: **Opus 4.8, high thinking** (core engine). See design.md §9.
+> **Carry into Phase 3 (deferred Phase-2 items, by design):** per-book reading-position resume
+> (the clip cache is global/content-addressed today — Phase 3 may add per-book folders); the
+> in-memory clip cache cap is 24 (`player.js` `maxClips`) — fine, revisit if needed. **Phase 4**
+> owns: reading-speed control, a **voice-picker** UI (today `af_heart` is hardcoded in ~4 spots —
+> centralize when the picker lands), end-of-chapter-pause control, pronunciation overrides, and
+> Markdown/DOCX. Also note: **manual nav while narrating is "voice leads"** — a TOC/keyboard jump is
+> overridden by the next clip's `view.show`; confirm that's the desired UX or revisit in Phase 3/4.
 
 ---
 
@@ -146,6 +198,22 @@ runs on Windows 11 + macOS (MacBook Pro M5).
   (inconsistent on abbreviations across engines).
 - **Tests = Node's built-in `node:test`** (no Jest/Mocha). **GUI smoke = Playwright `_electron`.**
 - **Packaging = electron-builder**: Windows `portable` (single double-click `.exe`), macOS `dmg` arm64.
+
+## Tech chosen in Phase 2 (the voice stack)
+
+- **TTS = `kokoro-js@1.2.1` + `onnxruntime-node`, CPU**, run in an Electron **`utilityProcess`**
+  (`src/main/tts-service.js`). Model `onnx-community/Kokoro-82M-v1.0-ONNX`, `dtype:'q8'`
+  (→ `onnx/model_quantized.onnx`, ~88 MB), 24 kHz output. `onnxruntime-node` is a **native binary**
+  (prebuilt, no compile) — the one non-pure-JS piece; it loads fine in Electron via N-API.
+- **Model is fetched on build, NOT committed.** `assets/models/` is gitignored (~88 MB). Run
+  `node scripts/fetch-model.js` once before `npm run dist`. Voices (`af_heart.bin` etc.) ship inside
+  the npm package (`node_modules/kokoro-js/voices/*.bin`) and load via `fs` — no separate fetch.
+- **Pure logic, dependency-injected:** `src/renderer/reading-cursor.js` (sentence navigation) and
+  `src/renderer/player.js` (playback controller) are DOM/audio/model-free and unit-tested with fakes,
+  mirroring `paginate.js`. Audio/IPC/model are the injected edges.
+- **Audio path:** WAV bytes cross renderer↔main as a typed array over IPC (CSP unchanged, no
+  `media-src`); the renderer decodes via `AudioContext.decodeAudioData`. Disk cache =
+  `src/main/clip-cache.js` (content hash, atomic temp-write+rename).
 
 ## Gotchas to remember (will grow as we build)
 
@@ -191,3 +259,35 @@ runs on Windows 11 + macOS (MacBook Pro M5).
   `.exe`/`.dmg`. (Verified present in the asar.)
 - **Stale `dist/` artifact:** the portable `.exe` + `win-unpacked/` from the font-packaging check
   are build outputs, not source. Safe to delete / regenerate with `npm run dist:win`.
+
+### Phase 2 (voice) gotchas
+
+- **The model must land LOOSE at `resources/assets/models`, not in the asar.** The plan assumed the
+  `assets/**/*` glob would do it — **it doesn't** (that glob packs into `app.asar`, but `main.js`
+  reads a loose `process.resourcesPath/assets/models`). Fixed in `package.json` with
+  `extraResources` (copies it loose) **and** a `!assets/models/**/*` `files` exclude (so the 88 MB
+  blob isn't also shipped inside the asar). Don't remove either.
+- **`onnxruntime-node`'s `.node` must be `asarUnpack`ed** (`**/node_modules/onnxruntime-node/**`) —
+  a native binary can't load from inside an asar. Made explicit (don't rely on auto-detect).
+- **utilityProcess WAV transfer:** send the bytes **in the message body** (`postMessage({…, wav})`),
+  **not** in a transfer list — Electron's utilityProcess uses structured clone; a `[wav.buffer]`
+  transfer-list arg makes `msg.wav` arrive `undefined`. (This bit us; the plan's first draft had it.)
+- **`kokoro-js` quirks:** `tts.list_voices()` returns **void** (it `console.table`s) — use
+  `Object.keys(tts.voices)`. `RawAudio.toWav()` exists and returns an `ArrayBuffer` (24 kHz).
+- **Offline config order is load-bearing:** import `@huggingface/transformers`, set
+  `env.cacheDir` + `env.allowRemoteModels=false` (+ `allowLocalModels=true`), **then** import
+  `kokoro-js` so it inherits the same transformers singleton. Reorder and it can hit the network.
+- **The per-sentence highlight only toggles `.is-reading`** on the existing spans (the sacred DOM
+  contract). Cross-chapter highlight goes through `ReaderView.show` → `goToChapter` first (only the
+  current chapter is mounted). Keep `setView()` CSS-only — the spans must survive a mode switch.
+- **AudioContext starts `suspended`** (autoplay policy) — `resumeAudio()` is called in the play /
+  Space / sentence-click gesture paths or the first clip is silently muted. Don't remove it.
+- **`#play-pause` is `.blur()`ed after click** so Space doesn't double-fire (focused-button native
+  activation + the keydown handler). Keep it.
+- **Clip cache key = `sha1("<voice> <text>")`** (voice-first). The in-memory decoded-clip Map is
+  bounded (`player.js` `maxClips`, default 24); rewind beyond the cap re-synthesizes from the disk
+  cache (fast). A synth failure mid-playback stops cleanly (`setPlaying(false)`) — a single Play
+  retries (the poisoned clip promise self-evicts).
+- **`goToPageContaining` paged-mode flip is not yet live-verified** — if a flip lands on the wrong
+  page in single/two-page mode, add the `getBoundingClientRect` fallback (offsets can read
+  pre-fragmentation on some engines). Scroll mode (the expected favorite) is fine.
