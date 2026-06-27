@@ -251,7 +251,8 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 
 **Phases 2, 2.5, and 2.6 are built & planner-verified on Windows (Phase 2.6 also picked up two
 user-reported bug fixes). The voice-latency spike is planned and ready for a fresh session. Then
-human-ears/eyes confirmation, the macOS build, and Phase 3.**
+human-ears/eyes confirmation and Phase 3 — all on Windows. **macOS is deliberately deferred until the
+Windows version is finished** (user decision 2026-06-27) — don't start the Mac build before then.**
 
 1. **Run the voice-latency spike (brief ready).** A fresh session runs
    [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md): measure the delay, try the cheap
@@ -271,14 +272,15 @@ human-ears/eyes confirmation, the macOS build, and Phase 3.**
      fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
      single/two-page mode.
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
-3. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
-   Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`; the
-   build lands the model at `Reader.app/Contents/Resources/assets/models` (matches `main.js`).
-   **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper blocks launch —
-   out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
-4. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+3. **Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
    from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
    are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
+4. **Only after the Windows version is finished: the macOS build** (deferred by user decision
+   2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
+   right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
+   `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
+   `main.js`). **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper
+   blocks launch — out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
 
 > **Carry into Phase 3 (deferred items, by design):** per-book reading-position resume and **per-book
 > voice/speed memory** (the clip cache is global/content-addressed today, now keyed by voice+speed —
