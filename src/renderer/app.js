@@ -88,6 +88,7 @@ function showDocument(doc, fileName) {
     view: ReaderView,
     prefetchAhead: 3,   // synth runs ~0.4x realtime, so 3 stays comfortably ahead during play
     prefetchBehind: 1,  // keep the prior sentence warm so back-a-sentence is instant
+    maxClips: 48,       // retain more decoded clips (~18MB) so rewind targets stay instant
     onStateChange: updatePlayButton, // keep #play-pause in sync (esp. auto-stop at book end)
     endChapterPauseMs,               // live: rest beat when narration crosses into a new chapter
   });
