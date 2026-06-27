@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const assert = require('node:assert');
 const { _electron: electron } = require('playwright');
+const { clipKey } = require('../../src/main/clip-cache');
 
 const ROOT = path.join(__dirname, '..', '..');
 const FIXTURE = path.join(ROOT, 'test', 'fixtures', 'alice.epub');
@@ -245,10 +246,49 @@ async function dropBook(win) {
     const el = document.querySelector('.sentence.is-reading');
     return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
   });
-  await win.click('#play-pause'); // pause so narration doesn't run on into the settings test
   assert.ok(secondReading && secondReading !== firstReading,
     `highlight should advance off the first sentence (${firstReading} -> ${secondReading})`);
   console.log('  ✓ narration highlight engaged and advanced', `(${firstReading} -> ${secondReading})`);
+
+  // 7c. Phase 2.5 — switching the voice mid-narration keeps narration playing and
+  //     marks the new voice active (the comfort popover is already open from the font
+  //     test). reload() never flips `playing`, and markActiveVoice() runs synchronously
+  //     in the click handler, so these hold regardless of when the async re-synth lands.
+  //     (window.reader is a frozen contextBridge object, so a synthesize spy can't
+  //     install — the voice-SPECIFIC engine proof lives in 7d via an on-disk clip.)
+  await win.waitForSelector('#voice-list .voice-pick[data-voice="bm_george"]');
+  await win.click('#voice-list .voice-pick[data-voice="bm_george"]');
+  const afterVoice = await win.evaluate(() => ({
+    activeVoice: document.querySelector('.voice-pick.active')?.dataset.voice,
+    playing: document.getElementById('play-pause').getAttribute('aria-label') === 'Pause',
+    hasHighlight: !!document.querySelector('.sentence.is-reading'),
+  }));
+  assert.strictEqual(afterVoice.activeVoice, 'bm_george', 'picked voice should be marked active');
+  assert.ok(afterVoice.playing, 'narration should keep playing after a voice switch');
+  assert.ok(afterVoice.hasHighlight, 'a sentence should still be highlighted after the switch');
+  console.log('  ✓ voice switch kept narration playing, marked new voice active (bm_george)');
+
+  // 7d. ▶ preview synthesizes a sample in the previewed voice through the REAL engine.
+  //     Deterministic + voice-specific: the preview text is fixed and speed is still 1
+  //     here (section 8 sets 1.25 later), so we know the EXACT cache filename. Assert it
+  //     is absent (fresh tmpdir), click ▶, then poll the clips dir until it appears.
+  //     The SAMPLE_TEXT literal mirrors app.js previewVoice() — keep them in sync.
+  const SAMPLE_TEXT = 'The quick brown fox jumps over the lazy dog.';
+  const clipsDir = path.join(USERDATA, 'clips');
+  const previewFile = clipKey(SAMPLE_TEXT, 'af_bella', 1);
+  const has = (f) => fs.existsSync(clipsDir) && fs.readdirSync(clipsDir).includes(f);
+  assert.ok(!has(previewFile), 'preview clip should not exist before clicking ▶ (fresh userData)');
+  await win.click('.voice-row:has(.voice-pick[data-voice="af_bella"]) .voice-preview');
+  for (let i = 0; i < 120 && !has(previewFile); i++) await win.waitForTimeout(500); // up to 60s
+  assert.ok(has(previewFile), `▶ preview should synthesize an af_bella clip on disk (${previewFile})`);
+  console.log('  ✓ ▶ preview synthesized an af_bella sample through the real engine');
+
+  // Ensure narration is paused before the settings test (preview already ducked it,
+  // but pause defensively if anything is still playing).
+  await win.evaluate(() => {
+    const b = document.getElementById('play-pause');
+    if (b.getAttribute('aria-label') === 'Pause') b.click();
+  });
   await win.screenshot({ path: path.join(SHOTS, '4-narrating.png') });
 
   // 8. AC#6 — set ALL comfort prefs to NON-DEFAULT values, then prove every one
@@ -263,6 +303,14 @@ async function dropBook(win) {
     r.dispatchEvent(new Event('input', { bubbles: true }));
     r.dispatchEvent(new Event('change', { bubbles: true }));
   });
+  // Phase 2.5 — non-default voice (already bm_george from 7c), speed, and pause.
+  await win.evaluate(() => {
+    const r = document.getElementById('speed-range');
+    r.value = '1.25';                // non-default reading speed
+    r.dispatchEvent(new Event('input', { bubbles: true }));
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await win.click('#pause-toggle button[data-pause="longer"]'); // non-default end-of-chapter pause
   await win.waitForTimeout(700); // let the debounced save + IPC write settings.json
   await win.screenshot({ path: path.join(SHOTS, '3-dark-single.png') });
   await app.close();
@@ -280,6 +328,10 @@ async function dropBook(win) {
     size: getComputedStyle(document.documentElement).getPropertyValue('--reading-font-size').trim(),
     width: getComputedStyle(document.documentElement).getPropertyValue('--reading-max-width').trim(),
     range: document.getElementById('width-range').value,
+    voice: document.querySelector('.voice-pick.active')?.dataset.voice,
+    speed: document.getElementById('speed-range').value,
+    speedLabel: document.getElementById('speed-label').textContent,
+    pause: document.querySelector('#pause-toggle button.active')?.dataset.pause,
   }));
   assert.strictEqual(persisted.theme, 'dark', 'theme should persist across restart');
   assert.strictEqual(persisted.view, 'two', 'view mode should persist across restart');
@@ -287,6 +339,10 @@ async function dropBook(win) {
   assert.strictEqual(persisted.size, '24px', 'text size should persist across restart');
   assert.strictEqual(persisted.range, '60', 'page width should persist across restart');
   assert.strictEqual(persisted.width, '60rem', 'page width var should persist across restart');
+  assert.strictEqual(persisted.voice, 'bm_george', 'voice should persist across restart');
+  assert.strictEqual(persisted.speed, '1.25', 'reading speed should persist across restart');
+  assert.strictEqual(persisted.speedLabel, '1.25×', 'speed label should reflect persisted value');
+  assert.strictEqual(persisted.pause, 'longer', 'end-of-chapter pause should persist across restart');
   await app.close();
 
   console.log('SMOKE OK:', JSON.stringify(stats),

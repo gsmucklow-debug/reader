@@ -47,3 +47,17 @@ books), press Play, and confirm by listening:
 - [ ] Reading crosses chapter boundaries without stalling.
 - [ ] Second play of the same passage is instant (on-disk clip cache hit).
 - [ ] **Offline** works in the packaged `.exe` with the network off (adapter off).
+
+## Phase 2.5 — voice, speed & end-of-chapter pause (manual listen check)
+
+Open the **Aa** comfort popover. The smoke test proves the *mechanism* (a voice
+switch re-synthesizes in the new voice, ▶ preview issues a synth, and voice/speed/
+pause survive a restart), but ears must judge quality and feel:
+
+- [ ] Each curated voice (US/UK × male/female) sounds right via its ▶ preview.
+- [ ] Picking a voice restarts the current sentence in the new voice immediately.
+- [ ] Speed slider changes pace (and restarts the current sentence on release); the
+      label tracks the value as you drag.
+- [ ] End-of-chapter pause: **Off** continues immediately; **Short** / **Longer** wait
+      the beat when crossing into a new chapter; pausing during the beat cancels it.
+- [ ] Voice / speed / pause survive an app restart.
