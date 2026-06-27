@@ -469,6 +469,91 @@ async function applyFont(family, fallback) {
   saveSettings();
 }
 
+// --- Voice picker + reading speed + end-of-chapter pause -------------------
+// Curated best English voices, grouped US/UK × male/female. Every `id` is verified
+// present in the installed kokoro-js voices (28 total; these are the standouts).
+const VOICES = [
+  { group: 'US', items: [
+    { id: 'af_heart',    label: 'Heart — US, female' },
+    { id: 'af_bella',    label: 'Bella — US, female' },
+    { id: 'am_michael',  label: 'Michael — US, male' },
+    { id: 'am_fenrir',   label: 'Fenrir — US, male' },
+  ] },
+  { group: 'UK', items: [
+    { id: 'bf_emma',     label: 'Emma — UK, female' },
+    { id: 'bf_isabella', label: 'Isabella — UK, female' },
+    { id: 'bm_george',   label: 'George — UK, male' },
+    { id: 'bm_fable',    label: 'Fable — UK, male' },
+  ] },
+];
+const SAMPLE_TEXT = 'The quick brown fox jumps over the lazy dog.';
+
+const voiceListEl = document.getElementById('voice-list');
+function buildVoiceList() {
+  voiceListEl.innerHTML = '';
+  for (const grp of VOICES) {
+    const h = document.createElement('div');
+    h.className = 'voice-group';
+    h.textContent = grp.group;
+    voiceListEl.appendChild(h);
+    for (const v of grp.items) {
+      const row = document.createElement('div');
+      row.className = 'voice-row';
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'voice-pick';
+      pick.dataset.voice = v.id;
+      pick.textContent = v.label;
+      pick.addEventListener('click', () => { setVoice(v.id); markActiveVoice(); });
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'voice-preview';
+      prev.title = 'Preview';
+      prev.setAttribute('aria-label', `Preview ${v.label}`);
+      prev.textContent = '▶';
+      prev.addEventListener('click', (e) => { e.stopPropagation(); previewVoice(v.id); });
+      row.append(pick, prev);
+      voiceListEl.appendChild(row);
+    }
+  }
+  markActiveVoice();
+}
+function markActiveVoice() {
+  for (const b of voiceListEl.querySelectorAll('.voice-pick')) {
+    b.classList.toggle('active', b.dataset.voice === state.voice);
+  }
+}
+
+// ▶ preview: play a short sample in the given voice. Ducks narration first (the
+// user resumes manually) and is one-shot — it never touches the player's state.
+let previewClip = null;
+async function previewVoice(voiceId) {
+  if (state.player && state.player.isPlaying()) state.player.pause(); // duck narration
+  updatePlayButton();
+  await resumeAudio();
+  try {
+    if (previewClip) previewClip.stop();
+    const { wav, sampleRate } = await window.reader.synthesize(SAMPLE_TEXT, { voice: voiceId, speed: state.speed });
+    previewClip = await makeClip(wav, sampleRate);
+    previewClip.play(() => {});
+  } catch (e) { console.warn('[Reader] voice preview failed:', e); }
+}
+
+// Speed slider: track the live label on every drag tick (`input`), but only apply
+// (one restart) on release (`change`) so a drag isn't a storm of re-synths.
+const speedRange = document.getElementById('speed-range');
+const speedLabel = document.getElementById('speed-label');
+function fmtSpeed(x) { return `${(+x).toFixed(2).replace(/0$/, '')}×`; }
+speedRange.addEventListener('input', () => { speedLabel.textContent = fmtSpeed(speedRange.value); });
+speedRange.addEventListener('change', () => setSpeed(+speedRange.value));
+
+document.getElementById('pause-toggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-pause]');
+  if (!btn) return;
+  setEndChapterPause(btn.dataset.pause);
+  for (const b of document.querySelectorAll('#pause-toggle button')) b.classList.toggle('active', b === btn);
+});
+
 // --- Persisted comfort settings (global only; wired to main in this phase) --
 
 function gatherSettings() {
@@ -691,4 +776,5 @@ readingEl.addEventListener('click', async (e) => {
 
 // --- Boot -----------------------------------------------------------------
 buildFontList();
+buildVoiceList(); // before loadSettings() so applySettings' markActiveVoice has buttons
 loadSettings();
