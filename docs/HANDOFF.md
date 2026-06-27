@@ -201,6 +201,30 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     wider prefetch, larger clip cap), and probe whether `onnxruntime-node` can use the user's NVIDIA
     GPU + the real speedup. **Output = numbers + a recommendation; no GPU code ships from the spike.**
     Decided deliberately because GPU **overrides the logged CPU-only decision**.
+- [x] **Voice-latency spike — run & findings recorded (2026-06-27, Windows; builder-reported).** A
+  fresh Opus 4.8 session ran [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md) on branch
+  `spike/voice-latency` (nothing shipped). Full numbers + tables:
+  [`plans/spike-voice-latency-findings.md`](./plans/spike-voice-latency-findings.md). Headlines:
+  - **Dominant cost = one uncached single-sentence synth** (~1.7 s median; ~0.5 s short, ~3–4 s long).
+    Cache hits (2 ms), decode (5 ms), DOM mount/paginate (6 ms), even cold load (~1.45 s, hidden behind
+    book-open) are all negligible. Continuous play never stutters (0.41× realtime keeps ahead); only
+    **discontinuous jumps to a cold sentence** are felt — confirms the brief's hypothesis.
+  - **🔑 The shipping `q8` dtype is the slowest option (planner-verified — re-ran the sweep here).** q8
+    (~1.9 s median) is the sole outlier; **fp16/q4/q4f16/fp32 are all ~4× faster** (~0.5 s) — int8
+    dequant overhead outweighs its benefit on this CPU. **Dropping q8 cuts the dominant cost ~4×,
+    CPU-only, zero per-OS divergence.** This is the spike's highest-value result. **Gated, not landed:**
+    the numbers are Windows-x64/fast-desktop; **the user's primary device is the MacBook Pro M5 (ARM),
+    which the spike never touched** — so the win is *unvalidated on the actual target*. Also +70 MB
+    bundle + a re-run of the packaged-offline gate. → scoped as a follow-up (see Next up), M5
+    measurement is the **gate**.
+  - **GPU is a dead end on this stack** (see Decisions log). DirectML loads Kokoro then **fails at the
+    vocoder's ConvTranspose** on first inference; CUDA isn't in the prebuilt Node binding; CoreML is a
+    separate Mac backend. **No working GPU path, no measured speedup** — strengthens the CPU-only call.
+  - **Part B:** launch warm-up is **already wired** (`main.js:159`); wider prefetch (ahead 3 + behind 1)
+    makes back-a-sentence an instant 2 ms hit; clip cap 24→48 is a marginal rewind win. **Both landed on
+    master (cherry-picked `85da182`, `a525940`; 68/68 unit tests green here after the pick).** They polish
+    rewind/continuous play but **cannot close the dominant felt gap** (an arbitrary cold jump still pays
+    one synth) — only faster synth (dtype) does.
 - [x] **Phase 2.6 — UI polish & heading reading: built & planner-verified (2026-06-27, Windows).**
   Built by a fresh Opus 4.8 builder (8 commits, `4dca458` → `68a0cb0`); planning session
   **independently re-verified** — re-ran the suites here and read the diffs, not taken on "looks good."
@@ -250,15 +274,26 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 ## Next up
 
 **Phases 2, 2.5, and 2.6 are built & planner-verified on Windows (Phase 2.6 also picked up two
-user-reported bug fixes). The voice-latency spike is planned and ready for a fresh session. Then
+user-reported bug fixes). The voice-latency spike has been run; findings recorded (GPU = dead end; the
+CPU dtype is the real lever). Two near-term decisions below (Part B landing + dtype follow-up), then
 human-ears/eyes confirmation and Phase 3 — all on Windows. **macOS is deliberately deferred until the
 Windows version is finished** (user decision 2026-06-27) — don't start the Mac build before then.**
 
-1. **Run the voice-latency spike (brief ready).** A fresh session runs
-   [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md): measure the delay, try the cheap
-   wins, probe GPU feasibility on the NVIDIA box → report numbers + a recommendation. Recommended:
-   **Opus 4.8 high**. **No GPU code ships from the spike.**
-2. **User: listen + confirm (Phases 2, 2.5, 2.6).** Run the **fresh** packaged `.exe` (rebuilt today
+1. **✅ Part B landed (done 2026-06-27).** The two low-risk CPU-only spike commits are cherry-picked to
+   master — `85da182` (prefetch ahead 3 + behind 1 → instant back-a-sentence) and `a525940` (clip cap
+   24→48); 68/68 unit tests green after the pick. The throwaway harnesses stay off master except
+   `test/manual/spike-dtype-sweep.js` (kept for the dtype follow-up). **The shipped `.exe` will reflect
+   these only after a rebuild** (`npm run dist:win`) — do that before the next user listen-test.
+2. **Dtype follow-up — validate on the M5, then maybe swap (own small phase). HIGH VALUE.** The spike's
+   biggest find: `q8` is ~4× slower than fp16/q4/q4f16 on CPU (planner-verified on Windows; see
+   findings). **The catch: all numbers are Windows x64, but the user's *primary* device is the MacBook
+   Pro M5 (ARM), which the spike never measured.** So before swapping the shipping dtype: re-run
+   `test/manual/spike-dtype-sweep.js` **on the M5** (the gating measurement — does the ~4× hold on ARM?),
+   account for **+70 MB** bundle, and re-run the **packaged-offline gate** (`verify-packaged.js`) since
+   the model blob changes. (A low-end laptop matters only if distributing publicly.) Swap to fp16 (or
+   q4f16, ~155 MB) **only if the gain holds on the M5**. CPU-only → consistent with the logged decision.
+   **No GPU.**
+3. **User: listen + confirm (Phases 2, 2.5, 2.6).** Run the **fresh** packaged `.exe` (rebuilt today
    18:16 with the two bug fixes — not an old Desktop/USB copy; rebuild with `npm run dist:win` if
    unsure), drag in your books, press Space, and walk the manual checklists in
    [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
@@ -272,10 +307,10 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
      single/two-page mode.
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
-3. **Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+4. **Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
    from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
    are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
-4. **Only after the Windows version is finished: the macOS build** (deferred by user decision
+5. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
    `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
@@ -284,8 +319,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 
 > **Carry into Phase 3 (deferred items, by design):** per-book reading-position resume and **per-book
 > voice/speed memory** (the clip cache is global/content-addressed today, now keyed by voice+speed —
-> Phase 3 may add per-book folders); the in-memory clip cache cap is 24 (`player.js` `maxClips`) —
-> fine, revisit if needed. **Phase 4** owns: **pronunciation overrides** and **Markdown/DOCX**.
+> Phase 3 may add per-book folders); the in-memory clip cache cap is **48** (`player.js` `maxClips`,
+> raised from 24 by the spike's Part B) — fine, revisit if needed. **Phase 4** owns: **pronunciation overrides** and **Markdown/DOCX**.
 > (Voice-picker UI, reading-speed, and end-of-chapter pause were pulled forward into Phase 2.5 — done.
 > The user's *selection* now flows from `state.voice`; but the **default-fallback literal `'af_heart'`
 > still appears in ~4 files** (`clip-cache.js`, `tts-service.js`, `main.js`, `app.js`) as defensive
@@ -301,7 +336,14 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 - Local neural voice (Kokoro), not cloud — free/offline/private. Cloud premium voice deferred.
 - Sentence-level highlighting (not word-level) → per-sentence clips → no alignment needed.
 - Electron (not Tauri) → simplest path to all-JS, double-clickable, cross-platform.
-- CPU (not GPU) → identical behavior on Win/Mac; model is fast enough.
+- CPU (not GPU) → identical behavior on Win/Mac; model is fast enough **on the right dtype** (the
+  spike found `q8` is a ~4× slow outlier — "fast enough" assumes fp16/q4f16; see findings + Next up).
+- **GPU is a dead end on this stack — do not revisit (spike-verified 2026-06-27).** The user asked about
+  running Kokoro on the NVIDIA GPU; the spike proved there is no working path: `onnxruntime-node`'s
+  prebuilt Node binding ships only CPU + DirectML (no CUDA); **DirectML loads Kokoro then fails at the
+  vocoder's ConvTranspose on first inference**; CoreML would be a separate Mac backend. Every GPU option
+  is a new per-OS backend with a mandatory CPU-fallback, for **zero measured speedup** here. The lever is
+  the CPU dtype, not the device. This **confirms** the CPU-only decision above.
 - Library with covers + auto-resume from the start (Phase 3). Bookmarks/notes deferred.
 - PDF out of scope.
 - Three reading view modes: single page, two-page, continuous autoscroll (~¾-up highlight).
@@ -350,6 +392,10 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   (`src/main/tts-service.js`). Model `onnx-community/Kokoro-82M-v1.0-ONNX`, `dtype:'q8'`
   (→ `onnx/model_quantized.onnx`, ~88 MB), 24 kHz output. `onnxruntime-node` is a **native binary**
   (prebuilt, no compile) — the one non-pure-JS piece; it loads fine in Electron via N-API.
+  - **⚠️ `q8` is the slow dtype (spike 2026-06-27).** On a fast desktop CPU q8 synth (~1.9 s) is ~4×
+    slower than fp16/q4/q4f16/fp32 (~0.5 s) — int8 dequant overhead. A CPU-only swap to **fp16/q4f16**
+    is the biggest available latency win (no per-OS divergence), but it's **+70 MB** and **untested on
+    Mac/low-end** — scoped as a follow-up, not yet landed. See `plans/spike-voice-latency-findings.md`.
 - **Model is fetched on build, NOT committed.** `assets/models/` is gitignored (~88 MB). Run
   `node scripts/fetch-model.js` once before `npm run dist`. Voices (`af_heart.bin` etc.) ship inside
   the npm package (`node_modules/kokoro-js/voices/*.bin`) and load via `fs` — no separate fetch.
@@ -380,7 +426,9 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   plain Node (no window; `require('electron')` returns a path string). Clear it before launching:
   `env -u ELECTRON_RUN_AS_NODE npm start` (and Playwright launches strip it from `env`).
 - **Mac build must happen on the Mac** — you cannot produce/verify the `.dmg` from Windows.
-- Keep the voice on **CPU** — do not "optimize" onto GPU; it reintroduces per-OS divergence.
+- Keep the voice on **CPU** — do not "optimize" onto GPU; it reintroduces per-OS divergence, and the
+  spike proved there's no working GPU path anyway (DirectML fails at ConvTranspose; CUDA absent from the
+  Node binding — see Decisions log). The CPU **dtype** is the real perf lever, not the device.
 - **Mode switch is CSS-only.** `setView()` flips `body.dataset.view` + re-paginates; it never
   rebuilds `readingEl.innerHTML`. Keep it that way — the per-sentence spans (and the Phase 2
   highlight seam) depend on the chapter DOM being identical across single/two/scroll.
@@ -430,8 +478,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 - **`#play-pause` is `.blur()`ed after click** so Space doesn't double-fire (focused-button native
   activation + the keydown handler). Keep it.
 - **Clip cache key = `sha1("<voice> <text>")`** (voice-first). The in-memory decoded-clip Map is
-  bounded (`player.js` `maxClips`, default 24); rewind beyond the cap re-synthesizes from the disk
-  cache (fast). A synth failure mid-playback stops cleanly (`setPlaying(false)`) — a single Play
+  bounded (`player.js` `maxClips`, **48** since the spike's Part B; was 24); rewind beyond the cap
+  re-synthesizes from the disk cache (fast). A synth failure mid-playback stops cleanly (`setPlaying(false)`) — a single Play
   retries (the poisoned clip promise self-evicts).
 - **`goToPageContaining` paged-mode flip is not yet live-verified** — if a flip lands on the wrong
   page in single/two-page mode, add the `getBoundingClientRect` fallback (offsets can read
