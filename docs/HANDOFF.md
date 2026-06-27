@@ -135,44 +135,91 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     unchanged; the HANDOFF pre-fragmentation-offset caveat still stands if a flip lands wrong).
 - [x] Phase 2.5 plan written & approved (2026-06-27):
   [`plans/phase-2.5-voice-settings.md`](./plans/phase-2.5-voice-settings.md) — voice picker (+preview),
-  reading speed, end-of-chapter pause; global, persisted. Brainstormed + scoped with the user; ready
-  for a fresh builder session. **Not built yet.**
+  reading speed, end-of-chapter pause; global, persisted. Brainstormed + scoped with the user.
+- [x] **Phase 2.5 — Voice & playback settings: built & planner-verified (2026-06-27, Windows).**
+  Built by a fresh Opus 4.8 builder session (6 commits, `7d07463` → `e61db64`); planning session
+  **independently re-verified every claim** — re-ran the tests/smoke and read the diffs, not taken on
+  "looks good." **The narrator's voice, reading speed, and an end-of-chapter pause are now in the "Aa"
+  comfort popover, global and persisted.** The default user sees no change (`af_heart` / `1.0×` / pause
+  `off`) until they touch a control.
+  - **What shipped:** a grouped **US/UK voice picker** (8 curated voices, each with a **▶ preview**),
+    a **reading-speed** slider (0.7–1.5×, applies on release, live label), and an **end-of-chapter
+    pause** (Off / Short 1.5s / Longer 4s). A voice/speed change **restarts the current sentence
+    immediately** via the player's new `reload()` (flush in-memory prefetch + replay current sentence);
+    pause only affects the *next* chapter crossing.
+  - **The voice-agnostic seam held:** the only widening is `reader.synthesize(text, {voice})` →
+    `{voice, speed}`. No engine swap, no new IPC surface (preload already spread `opts`; that diff is
+    comment-only). Offline/CPU/utilityProcess and the per-sentence `.is-reading` DOM contract are
+    untouched.
+  - **Cache stays correct under multiple voices/speeds:** `clipKey(text, voice, speed)` =
+    `sha1("<voice> <speed> <text>")`; `get`/`put`/the `synthesize` IPC handler all thread `speed`.
+    Each (voice, speed, text) caches independently — **switching never wipes the others**; rewind stays
+    instant. Kokoro `generate` gets `speed` (clamped 0.5–2 defensively).
+  - **Independently re-verified by the planner:**
+    - `npm test` → **56/56 green** (re-run here; the 52 inherited + 4 new: `reload()` restarts/flushes
+      when playing and only-flushes when paused; the end-of-chapter beat **defers** a cross-chapter
+      advance and is **cancelable** via the token guard, using node `mock.timers`).
+    - `npm run smoke` → **PASS** (re-run here, exit 0): a mid-narration voice switch to `bm_george`
+      **keeps narration playing** and marks the new voice active; **▶ preview** writes the exact
+      `af_bella` clip to disk through the **real** engine (full IPC→synth→cache, voice-specific via
+      `clipKey`); and **voice/speed/pause persist across a real restart** (`bm_george` / `1.25×` /
+      `longer` all restored, label `1.25×`).
+    - **All 8 curated voice IDs verified present** in the shipped kokoro-js voices
+      (`node_modules/kokoro-js/voices/*.bin`): `af_heart`, `af_bella`, `am_michael`, `am_fenrir`,
+      `bf_emma`, `bf_isabella`, `bm_george`, `bm_fable`. Coder-reported grades: `af_heart` (A),
+      `af_bella` (A−), `bf_emma` (B−); **US male voices top out at C+** (`am_michael`/`am_fenrir`) —
+      worth an ear check.
+  - **Two plan deviations (test scaffolding only; production code is byte-for-byte the plan) — both
+    accepted as equivalent-or-stronger:** (a) the pause unit tests flush with `setImmediate`, not the
+    plan's `setTimeout`-based `tick()` — *required*, since a `setTimeout`-based flush can't resolve
+    while `setTimeout` is mocked; plus one extra `endCurrent()` because the shared test doc advances
+    `0.0.0→0.0.1→0.1.0→1.0.0` (three steps before the chapter crossing). (b) the smoke's voice check
+    asserts the **on-disk clip artifact** instead of a synth-spy — `window.reader` is a frozen
+    contextBridge object that can't be spied, and the artifact check proves the *whole* path.
+  - **Honest caveats / still manual:** (a) **audible** voice quality, that speed *sounds* faster, and
+    that the pause beats *feel* right are ears-only — checklist appended to
+    [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md). (b) Cosmetic: a code comment + the coder report say "28
+    voices total" but the dir ships **54** `.bin` files — harmless, all 8 curated IDs confirmed present.
+    (c) macOS still unbuilt (Phase 1 carryover). (d) **The user runs the packaged `.exe`, not `npm
+    start`** — renderer changes don't appear until a rebuild. `dist/Reader-0.1.0-portable.exe` was
+    rebuilt this session (confirmed). **⚠️ Any `.exe` copies the user keeps on Desktop/USB are still
+    the old build and must be replaced with the fresh `dist/` one.**
 
 ---
 
 ## Next up
 
-**Phase 2 is built & planner-verified on Windows. The user approved the voice and asked to expose
-voice settings — that plan is written and ready for a fresh builder session.**
+**Phases 2 and 2.5 are built & planner-verified on Windows. What remains is human-ears confirmation
+(voice quality, speed feel, offline) and the macOS build — then Phase 3.**
 
-1. **Build Phase 2.5 — Voice & Playback Settings (plan ready).** A fresh builder session should
-   execute [`plans/phase-2.5-voice-settings.md`](./plans/phase-2.5-voice-settings.md): a curated
-   voice picker (best US/UK male+female) with **▶ preview**, a **reading-speed** slider, and an
-   **end-of-chapter pause** (Off/Short/Longer) — all global, in the "Aa" comfort popover, persisted in
-   `settings.json`. A voice/speed change **restarts the current sentence immediately**. Brainstormed
-   + scoped with the user (2026-06-27). Recommended: **Sonnet 4.6, medium** (mostly settings/UI; the
-   two subtle spots — the cancelable end-of-chapter pause and the cache-key/prefetch-flush — are
-   called out in the plan and unit-tested).
-2. **User: listen + confirm offline (Phase 2).** `npm start`, drag in your books, press Space, walk
-   the **Phase 2 manual checklist** in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md): voice/sync, ¾-up
-   scroll, rewind controls, cross-chapter, instant 2nd play, and **network-off in the packaged
-   `.exe`**. (Mechanism is smoke-proven; only the *listening* + *adapter-off* gesture can't be
-   automated.)
-3. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
+1. **User: listen + confirm (Phases 2 and 2.5).** Run the **fresh** packaged `.exe` (not an old
+   Desktop/USB copy — rebuild with `npm run dist:win` if unsure), drag in your books, press Space, and
+   walk both manual checklists in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
+   - **Phase 2:** voice/sync, ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and
+     **network-off in the packaged `.exe`**.
+   - **Phase 2.5:** each curated voice via ▶ preview (esp. the US male voices, graded C+); picking a
+     voice restarts the current sentence in it; the speed slider changes pace and restarts on release;
+     the end-of-chapter pause waits the beat (and pausing during the beat cancels it).
+   (Mechanism is smoke-proven; only the *listening* + *adapter-off* gestures can't be automated.)
+2. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
    Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`; the
    build lands the model at `Reader.app/Contents/Resources/assets/models` (matches `main.js`).
    **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper blocks launch —
    out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
-4. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
-   from the exact sentence; per-book voice/speed memory becomes possible here). Recommended:
-   **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
+3. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+   from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
+   are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
 
-> **Carry into Phase 3 (deferred Phase-2 items, by design):** per-book reading-position resume
-> (the clip cache is global/content-addressed today — Phase 3 may add per-book folders); the
-> in-memory clip cache cap is 24 (`player.js` `maxClips`) — fine, revisit if needed. **Phase 4**
-> owns: reading-speed control, a **voice-picker** UI (today `af_heart` is hardcoded in ~4 spots —
-> centralize when the picker lands), end-of-chapter-pause control, pronunciation overrides, and
-> Markdown/DOCX. Also note: **manual nav while narrating is "voice leads"** — a TOC/keyboard jump is
+> **Carry into Phase 3 (deferred items, by design):** per-book reading-position resume and **per-book
+> voice/speed memory** (the clip cache is global/content-addressed today, now keyed by voice+speed —
+> Phase 3 may add per-book folders); the in-memory clip cache cap is 24 (`player.js` `maxClips`) —
+> fine, revisit if needed. **Phase 4** owns: **pronunciation overrides** and **Markdown/DOCX**.
+> (Voice-picker UI, reading-speed, and end-of-chapter pause were pulled forward into Phase 2.5 — done.
+> The user's *selection* now flows from `state.voice`; but the **default-fallback literal `'af_heart'`
+> still appears in ~4 files** (`clip-cache.js`, `tts-service.js`, `main.js`, `app.js`) as defensive
+> defaults — fine, but changing the *default* voice means touching all of them, so centralize that
+> literal if it ever becomes a real setting.) Also note:
+> **manual nav while narrating is "voice leads"** — a TOC/keyboard jump is
 > overridden by the next clip's `view.show`; confirm that's the desired UX or revisit in Phase 3/4.
 
 ---
@@ -304,3 +351,31 @@ voice settings — that plan is written and ready for a fresh builder session.**
 - **`goToPageContaining` paged-mode flip is not yet live-verified** — if a flip lands on the wrong
   page in single/two-page mode, add the `getBoundingClientRect` fallback (offsets can read
   pre-fragmentation on some engines). Scroll mode (the expected favorite) is fine.
+
+### Phase 2.5 (voice/playback settings) gotchas
+
+- **`clipKey` now includes speed:** `sha1("<voice> <speed> <text>")` (was `"<voice> <text>"`). All
+  three of `get`/`put` and the `synthesize` IPC handler thread `speed`. Don't drop it — two speeds of
+  the same sentence are different audio and must cache separately. Existing on-disk clips from before
+  this change just become cold (re-synthesized once); they're never served wrong.
+- **Voice/speed are read LIVE in the synth closure** (`{ voice: state.voice, speed: state.speed }`),
+  so a change applies via `player.reload()` (clears the in-memory prefetch + re-seeks the current
+  sentence) — **no `createPlayer` rebuild**. `reload()` replays if playing, re-shows if paused.
+- **`applySettings()` sets voice/speed/pause directly, NOT via `setVoice`/`setSpeed`** — those call
+  `reload()`+`saveSettings()`, which would be a needless storm during boot load (and there's no player
+  yet). Keep the boot path side-effect-free. `buildVoiceList()` must run **before** `loadSettings()`
+  so `markActiveVoice()` has buttons to mark.
+- **Speed applies on the slider's `change` (release), not `input`** — `input` only updates the live
+  label. Otherwise every drag tick re-synthesizes. Slider range is 0.7–1.5 in the UI;
+  `tts-service.clampSpeed` defends a wider 0.5–2 at the engine.
+- **End-of-chapter pause is a `setTimeout` in `onEnded`, cancelable by the token guard.** `pause()`/
+  `seekTo` bump `token` via `stopInternal()`, so a beat in flight is dropped by the `mine === token`
+  check when it fires. `endChapterPauseMs()` is injected and read **live** each crossing (a change
+  applies on the next chapter boundary, no reload).
+- **Unit-test trap (already handled):** with node `mock.timers` enabling `setTimeout`, a
+  `setTimeout`-based flush helper can never resolve — the pause tests flush with **`setImmediate`** and
+  advance the clock manually with `t.mock.timers.tick(ms)`. Don't "fix" them back to a `tick()` that
+  awaits `setTimeout`.
+- **Curated voices live in `VOICES` (app.js); IDs must exist in `node_modules/kokoro-js/voices/*.bin`**
+  — 8 are wired (US/UK × m/f); all confirmed present (54 `.bin` files ship). Adding one = add a
+  `{id,label}` row; the picker + preview pick it up automatically.
