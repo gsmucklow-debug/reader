@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, utilityProcess, Menu } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { parseEpub } = require('../parse/epub');
@@ -151,6 +151,10 @@ ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
 });
 
 app.whenReady().then(() => {
+  // Calm reading UI — no File/Edit/View/Window/Help bar. This drops the default
+  // accelerators (nothing to copy/paste in a reader; the close button quits).
+  // macOS gets a minimal app-menu (Quit) at the mac build — revisit then.
+  Menu.setApplicationMenu(null);
   createWindow();
   ttsRequest({ type: 'ping' }).catch(() => {}); // model warm-up; ignore failures (offline-safe)
   app.on('activate', () => {
