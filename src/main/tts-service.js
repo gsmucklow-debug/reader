@@ -38,10 +38,17 @@ function toWavBytes(audio) {
   return encodeWav(audio.audio, audio.sampling_rate);
 }
 
-async function synthesize({ text, voice }) {
+async function synthesize({ text, voice, speed }) {
   const tts = await getTTS();
-  const audio = await tts.generate(text, { voice: voice || 'af_heart' });
+  const audio = await tts.generate(text, { voice: voice || 'af_heart', speed: clampSpeed(speed) });
   return { wav: toWavBytes(audio), sampleRate: audio.sampling_rate };
+}
+
+// Kokoro's generate() accepts `speed`; clamp defensively to a sane TTS range so a
+// bad/unset value can never produce silence or a multi-minute clip.
+function clampSpeed(s) {
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.min(2, Math.max(0.5, n)) : 1;
 }
 
 // utilityProcess message protocol: { id, type:'synthesize', text, voice }.

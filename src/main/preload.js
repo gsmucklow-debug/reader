@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('reader', {
   loadSettings: () => ipcRenderer.invoke('load-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
 
-  // Renderer calls reader.synthesize(text, { voice }); we send ONE object so the
-  // main handler can destructure { text, voice } — keep this arg shape everywhere.
+  // Renderer calls reader.synthesize(text, { voice, speed }); we send ONE object so
+  // the main handler can destructure { text, voice, speed } — keep this shape everywhere.
   synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
 });

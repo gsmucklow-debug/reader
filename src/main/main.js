@@ -134,18 +134,19 @@ ipcMain.handle('save-settings', async (_evt, incoming) => {
   return true;
 });
 
-// Synthesize one sentence → { wav, sampleRate }. (Task 3 adds the disk cache in
-// front of this.) Preload sends ONE object { text, voice }; keep that shape here.
+// Synthesize one sentence → { wav, sampleRate }, served from the on-disk clip cache
+// when present. Preload sends ONE object { text, voice, speed }; keep that shape here.
+// Each (voice, speed, text) caches independently (clipKey includes all three).
 // res.wav is the typed array carried in the utilityProcess message; Electron
 // structured-clones it across the renderer IPC boundary, so return it as-is.
-ipcMain.handle('synthesize', async (_evt, { text, voice }) => {
+ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
   voice = voice || 'af_heart';
   clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
-  const hit = await clipCache.get(text, voice);
+  const hit = await clipCache.get(text, voice, speed);
   if (hit) return { wav: hit, sampleRate: 24000 }; // Kokoro is fixed 24 kHz
-  const res = await ttsRequest({ type: 'synthesize', text, voice });
+  const res = await ttsRequest({ type: 'synthesize', text, voice, speed });
   const bytes = res.wav;
-  await clipCache.put(text, voice, bytes);
+  await clipCache.put(text, voice, speed, bytes);
   return { wav: bytes, sampleRate: res.sampleRate };
 });
 
