@@ -509,6 +509,13 @@ const fssync = require('node:fs');
 
 ipcMain.handle('library:list', async () => getLibrary().list());
 
+// The shelf, pre-split into active/finished by the TESTED splitShelf (so the UI renders the
+// same logic the unit tests cover, instead of re-deriving the split in the renderer).
+ipcMain.handle('library:shelf', async () => {
+  const { splitShelf } = require('./library');
+  return splitShelf(await getLibrary().list());
+});
+
 ipcMain.handle('library:add', async (_evt, bytes, fileName) => {
   return getLibrary().add(Buffer.from(bytes), fileName);
 });
@@ -545,6 +552,7 @@ ipcMain.on('library:updateProgressSync', (evt, id, addr) => {
 ```js
   // Library (Phase 3)
   libraryList: () => ipcRenderer.invoke('library:list'),
+  libraryShelf: () => ipcRenderer.invoke('library:shelf'),
   libraryAdd: (bytes, fileName) => ipcRenderer.invoke('library:add', bytes, fileName),
   libraryOpen: (id) => ipcRenderer.invoke('library:open', id),
   libraryRemove: (id) => ipcRenderer.invoke('library:remove', id),
@@ -616,7 +624,6 @@ small API; `app.js` (Task 6) injects the open/remove/add callbacks so this file 
 // Bookshelf view: renders cover tiles into the active + finished shelves, with a
 // title-card fallback for cover-less books. DOM-only; app.js injects the callbacks.
 (function () {
-  const Cursor = globalThis.ReaderCursor;
   const view = document.getElementById('library-view');
   const emptyEl = document.getElementById('library-empty');
   const activeShelf = document.getElementById('shelf-active');
@@ -624,7 +631,8 @@ small API; `app.js` (Task 6) injects the open/remove/add callbacks so this file 
   const activeTitle = document.getElementById('active-title');
   const finishedTitle = document.getElementById('finished-title');
 
-  const isFinished = (r) => Cursor.eq(r.progress, r.lastAddress);
+  // NOTE: the active/finished split is computed in main (library.js splitShelf, unit-tested) and
+  // passed in pre-split — do NOT re-derive it here, so the shipped split == the tested split.
 
   // Deterministic calm color from the title (for the title-card fallback).
   function colorFor(str) {
@@ -658,11 +666,11 @@ small API; `app.js` (Task 6) injects the open/remove/add callbacks so this file 
     return el;
   }
 
-  async function render(records, cbs) {
+  // active + finished arrive PRE-SPLIT from main (library.js splitShelf, the tested logic).
+  async function render(active, finished, cbs) {
     activeShelf.innerHTML = ''; finishedShelf.innerHTML = '';
-    const active = records.filter((r) => !isFinished(r)).sort((a, b) => (b.lastOpenedAt||0)-(a.lastOpenedAt||0));
-    const finished = records.filter(isFinished).sort((a, b) => (b.lastOpenedAt||0)-(a.lastOpenedAt||0));
-    emptyEl.hidden = records.length > 0;
+    const total = active.length + finished.length;
+    emptyEl.hidden = total > 0;
     activeTitle.hidden = active.length === 0;
     finishedTitle.hidden = finished.length === 0;
     for (const r of active) activeShelf.appendChild(await tile(r, cbs));
@@ -738,8 +746,9 @@ async function showLibrary() {
   if (state.player) state.player.pause();
   flushProgress();                 // persist where we were (Task 7)
   state.currentBookId = null;
-  const records = await window.reader.libraryList();
-  await ReaderLibrary.render(records, { onOpen: openFromLibrary, onRemove: removeFromLibrary });
+  // Use the IPC that returns the TESTED split (active/finished) — don't re-derive in the UI.
+  const { active, finished } = await window.reader.libraryShelf();
+  await ReaderLibrary.render(active, finished, { onOpen: openFromLibrary, onRemove: removeFromLibrary });
   ReaderLibrary.show();
 }
 
@@ -747,10 +756,17 @@ async function openFromLibrary(rec) {
   const { doc, progress } = await window.reader.libraryOpen(rec.id);
   state.currentBookId = rec.id;
   ReaderLibrary.hide();
-  showDocument(doc, rec.fileName);        // existing reader bootstrap
+  showDocument(doc, rec.fileName);                 // existing reader bootstrap (builds the player)
   const start = progress || ReaderCursor.firstAddress(doc);
-  if (start && state.player) state.player.seekToAddress?.(start) ?? state.player.jumpToPaused?.(start);
-  // If no such helper exists, use the existing seam: show + set player addr via jumpTo without play.
+  if (start && state.player) {
+    state.player.showAt(start);                    // position + highlight, paused (no auto-play)
+    // RESUME-PAGE ACCURACY (paged modes): goToPageContaining reads el.offsetLeft, which is wrong
+    // until fonts/layout settle on a fresh open. Re-resolve the page once metrics are real.
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (_) {}
+      state.player.showAt(start);                  // re-flip to the correct page with real metrics
+    }
+  }
 }
 
 async function removeFromLibrary(rec) {
@@ -760,12 +776,17 @@ async function removeFromLibrary(rec) {
 }
 ```
 
+> **Add-error visibility (shelf):** `reportError` un-hides `#empty-state`, but the screen CSS hides
+> `#empty-state` while `data-screen="library"`. So a failed import *from the shelf* would show nothing.
+> In `addAndOpen`'s catch, surface the error on the shelf instead — simplest: set `#library-empty`'s
+> text to a "Couldn't open that file" message and ensure it's visible, or a `window.alert`. Don't rely
+> on `reportError` alone for the shelf path.
+
 > **Seeking to the saved sentence without auto-playing:** the player exposes `jumpTo` (which *plays*)
 > and `seekTo` is internal. Add a tiny public method to `player.js` for "position here, paused":
 > in the returned object add `showAt: (a) => seekTo(a)` (seekTo already re-shows when paused and
 > replays when playing — and we call it while paused, so it just highlights + flips to the sentence).
-> Then `openFromLibrary` does: `if (start) state.player.showAt(start);`. Replace the speculative
-> `seekToAddress?.()` line above with `state.player.showAt(start);`.
+> `openFromLibrary` (above) already calls `state.player.showAt(start)`.
 
 Make that `player.js` change now (one line in the returned object of `createPlayer`):
 
@@ -969,6 +990,12 @@ user-data-dir, `_electron.launch`, the `env` strip of `ELECTRON_RUN_AS_NODE`). A
 4. Press Play → narration advances (assert `.is-reading` moves, like the current smoke).
 5. Click **← Library** → back on the shelf.
 6. Reopen the tile → assert the highlighted sentence is **the advanced one, not 0.0.0** (resume works).
+   **AND verify the resume landed on the right PAGE, not just highlighted the right span** — in
+   single/two-page mode the highlight is set regardless of which page is showing, so an attribute-only
+   check false-greens a broken resume. Assert one of: the `.is-reading` span is actually in the
+   viewport (`getBoundingClientRect` within `#reading-viewport`), or the `#orientation` "Page N/M"
+   matches the highlighted span's page. Do this check in a **paged** view (set `data-view="single"`),
+   not just scroll mode.
 7. Remove the book (the `×`, accept the confirm via `page.on('dialog')`) → shelf empty.
 8. Re-add, advance to the **last** sentence (use the existing forward controls / `showAt` path or just
    assert the finished-section logic with a tiny book), confirm it lands in `#shelf-finished`.
