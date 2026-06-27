@@ -18,6 +18,7 @@ function createPlayer(deps) {
   const prefetchAhead = deps.prefetchAhead ?? 2;
   const maxClips = deps.maxClips ?? 24; // bound decoded-audio retention (~tens of MB)
   const onStateChange = deps.onStateChange || (() => {}); // optional: notify UI when `playing` flips
+  const endChapterPauseMs = deps.endChapterPauseMs || (() => 0); // live: ms to rest when crossing a chapter
 
   let addr = null;            // current sentence address
   let playing = false;
@@ -71,8 +72,27 @@ function createPlayer(deps) {
     if (my !== token || !playing) return; // stale end (paused/seeked) — ignore
     const next = Cursor.nextAddress(doc, addr);
     if (!next) { setPlaying(false); activeClip = null; return; } // end of book
+    const crossing = next.ci !== addr.ci;
     addr = next;
-    playCurrent();
+    activeClip = null;
+    // Crossing into a new chapter? Rest the configured beat before the next sentence.
+    // The beat is cancelable: pause()/seekTo bump `token` via stopInternal(), so a
+    // beat in flight is dropped by the `mine === token` check when it fires.
+    const waitMs = crossing ? endChapterPauseMs() : 0;
+    if (waitMs > 0) {
+      const mine = my; // token is unchanged until playCurrent; a pause/seek bumps it
+      setTimeout(() => { if (mine === token && playing) playCurrent(); }, waitMs);
+    } else {
+      playCurrent();
+    }
+  }
+
+  // Apply a voice/speed change: drop the now-stale prefetch (synthesized with the
+  // old params) and restart the current sentence so the change is heard immediately.
+  // Paused: just flush; the next play() re-synthesizes with the new params.
+  function reload() {
+    clips.clear();
+    if (addr) return seekTo(addr); // seekTo replays if playing, re-shows if paused
   }
 
   // Flip `playing` and notify the UI only on an actual transition, so #play-pause
@@ -108,7 +128,7 @@ function createPlayer(deps) {
   }
 
   return {
-    play, pause,
+    play, pause, reload,
     toggle: () => (playing ? pause() : play()),
     backSentence: () => seekTo(Cursor.prevAddress(doc, addr) || addr),
     forwardSentence: () => seekTo(Cursor.nextAddress(doc, addr) || addr),

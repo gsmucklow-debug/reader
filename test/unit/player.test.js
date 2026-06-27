@@ -171,4 +171,58 @@ test('clips cache is bounded — a clip evicted behind the cap is re-synthesized
   assert.strictEqual(counts['s0'], 2);                 // re-synthesized → it really was evicted
 });
 
+test('reload() flushes prefetch and restarts the current sentence when playing', async () => {
+  const { deps, shown, synthed } = fakeDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0 });
+  await p.play(); await tick();              // 0.0.0 playing, synthed: ['a0']
+  await p.reload(); await tick();            // restart current sentence in new params
+  assert.strictEqual(shown[shown.length - 1], '0.0.0'); // re-shown (restarted), not advanced
+  assert.deepStrictEqual(synthed, ['a0', 'a0']); // re-synthesized (prefetch was flushed)
+});
+
+test('reload() while paused only flushes (does not start playing)', async () => {
+  const { deps } = fakeDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0 });
+  await p.play(); await tick(); p.pause();
+  await p.reload(); await tick();
+  assert.strictEqual(p.isPlaying(), false);
+});
+
+// NOTE (plan deviation, see report): the plan's pause tests enabled node mock timers
+// for setTimeout AND relied on the setTimeout-based `tick()` helper to flush — but with
+// setTimeout mocked, `await tick()` never resolves (the clock must be advanced manually),
+// so those tests would hang. We keep mock timers exactly as the plan intends and only
+// swap the FLUSH helper to setImmediate, which stays real when only setTimeout is mocked.
+// Also: the shared test doc runs 0.0.0 → 0.0.1 → 0.1.0 → 1.0.0, so the cross-chapter beat
+// happens after THREE advances (one more endCurrent() than the plan's illustrative comment).
+const flush = () => new Promise((r) => setImmediate(r));
+
+test('end-of-chapter pause defers the cross-chapter advance and is cancelable', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { deps, shown, endCurrent } = fakeDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0, endChapterPauseMs: () => 1500 });
+  await p.play(); await flush();             // 0.0.0
+  endCurrent(); await flush();               // → 0.0.1 (same chapter, no pause)
+  endCurrent(); await flush();               // → 0.1.0 (same chapter, no pause)
+  assert.strictEqual(shown[shown.length - 1], '0.1.0');
+  endCurrent(); await flush();               // crossing into ch1 → should WAIT
+  assert.strictEqual(shown[shown.length - 1], '0.1.0'); // not advanced yet (paused beat)
+  t.mock.timers.tick(1500); await flush();   // beat elapses
+  assert.strictEqual(shown[shown.length - 1], '1.0.0'); // now advanced into ch1
+});
+
+test('end-of-chapter pause is cancelled by pause() during the beat', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { deps, shown, endCurrent } = fakeDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0, endChapterPauseMs: () => 1500 });
+  await p.play(); await flush();
+  endCurrent(); await flush();               // → 0.0.1
+  endCurrent(); await flush();               // → 0.1.0
+  endCurrent(); await flush();               // crossing → beat starts
+  p.pause();                                 // cancel during the beat (bumps token)
+  t.mock.timers.tick(1500); await flush();
+  assert.strictEqual(shown[shown.length - 1], '0.1.0'); // never advanced into ch1
+  assert.strictEqual(p.isPlaying(), false);
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
