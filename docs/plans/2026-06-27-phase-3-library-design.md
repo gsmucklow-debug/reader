@@ -29,6 +29,9 @@ Phases 1–2.6 becomes a sub-view reached from the shelf.
 5. **Two groups on the shelf:** **active** (unfinished, `lastOpened` desc) and a separate **Finished**
    section below. **"Finished" is derived** (`progress === lastAddress`), not a stored flag — reopening
    a finished book and jumping earlier moves it back to active automatically.
+   - **Reopening a finished book restarts from the beginning** (resets `progress` → it returns to the
+     active shelf). Landing on the saved last-sentence is useless; re-reading is the normal reason to
+     reopen a finished book.
 6. **A clear delete/remove** control per book (with confirm): deletes the book folder + index entry.
    Global clips are **not** purged (other books may share sentences; clips are cheap + self-evicting).
 
@@ -53,9 +56,11 @@ userData/
   ```
   { id, title, author, addedAt, lastOpenedAt,
     cover,                      // relative filename, or null → render title card
-    lastAddress,                // {chapter,paragraph,sentence} of the final sentence (from parse)
-    progress }                  // {chapter,paragraph,sentence} | null (never opened)
+    lastAddress,                // {ci,pi,si} of the final sentence (from parse; reading-cursor shape)
+    progress }                  // {ci,pi,si} | null (never opened)
   ```
+  (Addresses use the existing `reading-cursor.js` shape `{ci,pi,si}` = chapter/paragraph/sentence
+  indices — not a separate notation.)
 - **Finished** = `progress != null && progress` deep-equals `lastAddress`. Derived at render time; no
   flag to keep in sync.
 
@@ -82,6 +87,21 @@ userData/
   paused, highlighted, page shown.
 - **Save progress:** on sentence advance, **debounced ~1–2s** `library:updateProgress`; **flushed** on
   pause, back-to-library, and app quit.
+
+## Robustness requirements (must build deliberately, not discover via red tests)
+
+1. **End-of-book must persist `progress` exactly equal to `lastAddress`.** "Finished" is derived from
+   that equality, so the book-end handler must flush progress at the final sentence — and that flush
+   must **win over any in-flight debounce** (cancel the pending debounced write, write `lastAddress`).
+   Phase 2's book-end ("stops cleanly, play resets") doesn't currently guarantee where the cursor
+   lands; pin it here.
+2. **Re-adding a book preserves existing `progress`.** Idempotent-by-hash means more than "no dupe
+   tile": re-dropping a book you're halfway through must **not** reset you to the start. `library:add`
+   on an existing `bookId` keeps the existing record's `progress`/`lastOpenedAt` (refreshes files if
+   needed). Unit test asserts progress survives a re-add.
+3. **Quit-flush must not race process teardown.** `before-quit` async fs writes can lose to exit.
+   Either write progress **synchronously** on the quit path, or `event.preventDefault()` and quit after
+   the write resolves. (Joins the Electron-lifecycle gotchas in HANDOFF.)
 
 ## Testing
 
