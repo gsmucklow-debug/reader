@@ -18,4 +18,17 @@ contextBridge.exposeInMainWorld('reader', {
   // Renderer calls reader.synthesize(text, { voice, speed }); we send ONE object so
   // the main handler can destructure { text, voice, speed } — keep this shape everywhere.
   synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
+
+  // Library (Phase 3)
+  libraryList: () => ipcRenderer.invoke('library:list'),
+  libraryShelf: () => ipcRenderer.invoke('library:shelf'),
+  libraryAdd: (bytes, fileName) => ipcRenderer.invoke('library:add', bytes, fileName),
+  libraryOpen: (id) => ipcRenderer.invoke('library:open', id),
+  libraryRemove: (id) => ipcRenderer.invoke('library:remove', id),
+  libraryUpdateProgress: (id, addr) => ipcRenderer.invoke('library:updateProgress', id, addr),
+  libraryCoverDataUrl: (id, coverName) => ipcRenderer.invoke('library:coverDataUrl', id, coverName),
+  libraryUpdateProgressSync: (id, addr) => ipcRenderer.sendSync('library:updateProgressSync', id, addr),
+
+  // File picker returning raw bytes (for library:add). Replaces pick-and-parse for the library flow.
+  pickFileBytes: () => ipcRenderer.invoke('pick-file-bytes'),
 });

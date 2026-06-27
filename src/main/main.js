@@ -2,9 +2,16 @@
 
 const { app, BrowserWindow, ipcMain, dialog, utilityProcess, Menu } = require('electron');
 const fs = require('node:fs/promises');
+const fssync = require('node:fs');
 const path = require('node:path');
 const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
+const { makeLibrary } = require('./library');
+
+let library = null;
+function getLibrary() {
+  return (library ||= makeLibrary(path.join(app.getPath('userData'), 'library')));
+}
 
 let mainWindow = null;
 let clipCache = null; // lazily created after app is ready (needs userData path)
@@ -132,6 +139,59 @@ ipcMain.handle('save-settings', async (_evt, incoming) => {
   }
   await fs.writeFile(settingsPath(), JSON.stringify(clean, null, 2), 'utf8');
   return true;
+});
+
+// --- Library IPC (Phase 3) ------------------------------------------------
+
+ipcMain.handle('library:list', async () => getLibrary().list());
+
+// The shelf, pre-split into active/finished by the TESTED splitShelf (so the UI renders the
+// same logic the unit tests cover, instead of re-deriving the split in the renderer).
+ipcMain.handle('library:shelf', async () => {
+  const { splitShelf } = require('./library');
+  return splitShelf(await getLibrary().list());
+});
+
+ipcMain.handle('library:add', async (_evt, bytes, fileName) => {
+  return getLibrary().add(Buffer.from(bytes), fileName);
+});
+
+ipcMain.handle('library:open', async (_evt, id) => getLibrary().open(id));
+
+ipcMain.handle('library:remove', async (_evt, id) => getLibrary().remove(id));
+
+ipcMain.handle('library:updateProgress', async (_evt, id, addr) =>
+  getLibrary().updateProgress(id, addr));
+
+// Cover bytes as a data: URL (CSP-safe under img-src 'self' data:). null if no cover.
+ipcMain.handle('library:coverDataUrl', async (_evt, id, coverName) => {
+  if (!coverName) return null;
+  try {
+    const p = path.join(app.getPath('userData'), 'library', 'books', id, coverName);
+    const bytes = await fs.readFile(p);
+    const mime = coverName.endsWith('.png') ? 'image/png'
+      : coverName.endsWith('.svg') ? 'image/svg+xml'
+      : coverName.endsWith('.gif') ? 'image/gif'
+      : coverName.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    return `data:${mime};base64,${bytes.toString('base64')}`;
+  } catch { return null; }
+});
+
+// Synchronous progress flush for renderer 'beforeunload' (quit-flush race fix).
+ipcMain.on('library:updateProgressSync', (evt, id, addr) => {
+  evt.returnValue = getLibrary().updateProgressSync(id, addr);
+});
+
+// Native file picker returning raw bytes (so the add path can hash + store the original).
+// Replaces pick-and-parse for the library flow (option (a): one add path via library:add).
+ipcMain.handle('pick-file-bytes', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open an EPUB', properties: ['openFile'],
+    filters: [{ name: 'EPUB books', extensions: ['epub'] }],
+  });
+  if (res.canceled || !res.filePaths[0]) return null;
+  const fp = res.filePaths[0];
+  return { bytes: await fs.readFile(fp), fileName: path.basename(fp) };
 });
 
 // Synthesize one sentence → { wav, sampleRate }, served from the on-disk clip cache
