@@ -27,7 +27,16 @@ const state = {
   font: null,      // null => default serif stack; otherwise a bundled family name
   geom: { colWidth: 0, gap: 48, per: 1 }, // last computed geometry, for flip math
   player: null,    // Phase 2: the per-book narrator (ReaderPlayer)
+  // Phase 2.5 — global voice/playback settings (persisted in settings.json):
+  voice: 'af_heart',          // curated Kokoro voice id
+  speed: 1,                   // reading-speed multiplier (Kokoro `speed`)
+  endChapterPause: 'off',     // 'off' | 'short' | 'longer' — rest beat when crossing a chapter
 };
+
+// End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
+// the player and read LIVE each chapter crossing, so a change applies on the next one.
+const PAUSE_MS = { off: 0, short: 1500, longer: 4000 };
+function endChapterPauseMs() { return PAUSE_MS[state.endChapterPause] ?? 0; }
 
 // Bundled, OFL-licensed reading fonts (files under assets/fonts/, declared in
 // fonts.css). `family` matches the @font-face font-family.
@@ -68,14 +77,18 @@ function showDocument(doc, fileName) {
   // still rejecting so the player's catch leaves the highlight in place.
   state.player = ReaderPlayer.createPlayer({
     doc,
-    synth: (text) => window.reader.synthesize(text, { voice: 'af_heart' }).catch((e) => {
-      console.warn('[Reader] synth failed:', e);
-      throw e;
-    }),
+    // Read voice+speed LIVE at call time so a setting change takes effect via the
+    // player's reload() (flush + restart) without rebuilding the player.
+    synth: (text) => window.reader.synthesize(text, { voice: state.voice, speed: state.speed })
+      .catch((e) => {
+        console.warn('[Reader] synth failed:', e);
+        throw e;
+      }),
     makeClip,
     view: ReaderView,
     prefetchAhead: 2,
     onStateChange: updatePlayButton, // keep #play-pause in sync (esp. auto-stop at book end)
+    endChapterPauseMs,               // live: rest beat when narration crosses into a new chapter
   });
   updatePlayButton();
 }
@@ -626,6 +639,26 @@ function updatePlayButton() {
   const on = state.player && state.player.isPlaying();
   btn.textContent = on ? '⏸' : '▶';
   btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+}
+
+// --- Apply-change helpers (wired to the UI in Task 4; also used by settings-load) ---
+// Voice/speed changes restart the current sentence immediately via player.reload()
+// (flush stale prefetch + replay). Pause only affects the NEXT chapter crossing, so
+// it needs no reload. All three persist globally.
+function setVoice(voiceId) {
+  state.voice = voiceId || 'af_heart';
+  if (state.player) state.player.reload(); // flush + restart current sentence in the new voice
+  saveSettings();
+}
+function setSpeed(x) {
+  state.speed = Math.min(1.5, Math.max(0.7, Number(x) || 1));
+  if (state.player) state.player.reload(); // restart current sentence at the new speed
+  saveSettings();
+}
+function setEndChapterPause(mode) {
+  state.endChapterPause = (mode in PAUSE_MS) ? mode : 'off';
+  // no reload — endChapterPauseMs() is read live on the next crossing
+  saveSettings();
 }
 
 // --- Wire the playback controls + keyboard + click-to-play ----------------
