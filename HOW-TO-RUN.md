@@ -42,7 +42,8 @@ books), press Play, and confirm by listening:
 - [ ] Voice is clear and warm (Kokoro `af_heart`); no garbled audio.
 - [ ] Highlight matches the spoken sentence — no drift; they advance together.
 - [ ] Scroll mode holds the reading line ~¾ up; paged modes flip with the reading.
-- [ ] Back-a-sentence / back-a-paragraph / forward-a-sentence work and resume cleanly.
+- [ ] Back-a-sentence / back-a-paragraph / forward-a-sentence / forward-a-paragraph work and resume cleanly.
+- [ ] Click any sentence to start reading there; Spacebar toggles play/pause.
 - [ ] Reading crosses chapter boundaries without stalling.
 - [ ] Second play of the same passage is instant (on-disk clip cache hit).
 - [ ] **Offline** works in the packaged `.exe` with the network off (adapter off).
