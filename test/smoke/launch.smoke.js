@@ -73,6 +73,42 @@ async function dropBook(win) {
   assert.ok(stats.firstHasIndices, 'first sentence must carry data-* indices');
   await win.screenshot({ path: path.join(SHOTS, '2-loaded.png') });
 
+  // 2b. Phase 2.6 — the comfort popover is split into two mutually-exclusive
+  //     popovers: "Aa" → Comfort, "Voice" → Voice. Opening one closes the other;
+  //     Esc closes whichever is open.
+  const popState = () => win.evaluate(() => ({
+    comfort: !document.getElementById('comfort-panel').hidden,
+    voice: !document.getElementById('voice-panel').hidden,
+  }));
+  await win.click('#settings-btn');
+  let pop = await popState();
+  assert.ok(pop.comfort && !pop.voice, 'Aa opens Comfort only');
+  await win.click('#voice-btn');
+  pop = await popState();
+  assert.ok(pop.voice && !pop.comfort, 'Voice opens Voice only; opening it closes Comfort');
+  await win.keyboard.press('Escape');
+  pop = await popState();
+  assert.ok(!pop.comfort && !pop.voice, 'Escape closes whichever popover is open');
+
+  // 2c. Phase 2.6 — a heading is an addressable, narratable span (an <hN> that
+  //     CONTAINS a sentence span), and the old injected, never-read chapter-title
+  //     heading is gone everywhere.
+  const headingInfo = await win.evaluate(() => {
+    const h = document.querySelector(
+      'h2.chapter-heading span.sentence[data-chapter][data-paragraph][data-sentence]'
+    );
+    return {
+      hasHeadingSpan: !!h,
+      headingText: h ? h.textContent.slice(0, 40) : null,
+      oldTitleCount: document.querySelectorAll('h2.chapter-title').length,
+    };
+  });
+  assert.ok(headingInfo.hasHeadingSpan,
+    'a heading must render as an addressable, narratable sentence span');
+  assert.strictEqual(headingInfo.oldTitleCount, 0,
+    'no injected chapter-title heading should exist anywhere');
+  console.log('  ✓ heading is a narratable span:', JSON.stringify(headingInfo.headingText));
+
   // 3. AC#1 — single-page pagination flips real pages with ← / →. The orientation
   //    strip changes on every flip (page within a chapter, or rolling to the next
   //    chapter's first page).
@@ -95,8 +131,13 @@ async function dropBook(win) {
 
   // AC#1 cross-chapter roll: flipping past the last page lands on the NEXT
   // chapter's first page; ← on page 1 lands on the PREVIOUS chapter's last page.
-  await win.keyboard.press('End');            // chapter 1, last page (2/2)
+  await win.keyboard.press('End');            // chapter 1, last page
   await win.waitForTimeout(180);
+  // Capture ch1's last-page orientation rather than hardcoding "Page 2 / 2": the
+  // front-matter chapter's page count depends on how its headings lay out (Phase 2.6
+  // renders them as sized <hN>), so this stays correct whether it's 2 or 3 pages.
+  const ch1Last = (await read()).orient;
+  assert.match(ch1Last, /Chapter 1 of 13 . Page \d+ \/ \d+/, `ch1 last page was "${ch1Last}"`);
   await win.keyboard.press('ArrowRight');     // roll forward into chapter 2
   await win.waitForTimeout(280);
   const rolled = await read();
@@ -104,7 +145,7 @@ async function dropBook(win) {
   await win.keyboard.press('ArrowLeft');       // roll back to chapter 1's last page
   await win.waitForTimeout(280);
   const rolledBack = await read();
-  assert.match(rolledBack.orient, /Chapter 1 of 13 . Page 2 \/ 2/, `roll back landed "${rolledBack.orient}"`);
+  assert.strictEqual(rolledBack.orient, ch1Last, `roll back should land on ch1's last page, got "${rolledBack.orient}"`);
 
   // 4. AC#2 / AC#3 — cycle all three view modes without crashing.
   await win.click('#view-toggle button[data-view="two"]');
@@ -236,6 +277,11 @@ async function dropBook(win) {
     const el = document.querySelector('.sentence.is-reading');
     return `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}`;
   });
+  // Phase 2.6 — the play button shows the pause shape (.is-playing) while narrating.
+  assert.ok(
+    await win.evaluate(() => document.getElementById('play-pause').classList.contains('is-playing')),
+    '#play-pause should carry .is-playing while narration is running'
+  );
   // Highlight must move to a DIFFERENT sentence — proves clip-ended → advance
   // through the real engine, not just a one-shot highlight of the first sentence.
   await win.waitForFunction((prev) => {
@@ -251,11 +297,13 @@ async function dropBook(win) {
   console.log('  ✓ narration highlight engaged and advanced', `(${firstReading} -> ${secondReading})`);
 
   // 7c. Phase 2.5 — switching the voice mid-narration keeps narration playing and
-  //     marks the new voice active (the comfort popover is already open from the font
-  //     test). reload() never flips `playing`, and markActiveVoice() runs synchronously
-  //     in the click handler, so these hold regardless of when the async re-synth lands.
+  //     marks the new voice active. Phase 2.6 moved the voice controls into the Voice
+  //     popover, so open it first (clicking #play-pause in 7b closed any popover).
+  //     reload() never flips `playing`, and markActiveVoice() runs synchronously in the
+  //     click handler, so these hold regardless of when the async re-synth lands.
   //     (window.reader is a frozen contextBridge object, so a synthesize spy can't
   //     install — the voice-SPECIFIC engine proof lives in 7d via an on-disk clip.)
+  await win.click('#voice-btn');
   await win.waitForSelector('#voice-list .voice-pick[data-voice="bm_george"]');
   await win.click('#voice-list .voice-pick[data-voice="bm_george"]');
   const afterVoice = await win.evaluate(() => ({
@@ -293,8 +341,12 @@ async function dropBook(win) {
 
   // 8. AC#6 — set ALL comfort prefs to NON-DEFAULT values, then prove every one
   //    survives a restart (defaults would pass a weaker test trivially).
+  //    Phase 2.6 note: the comfort vs voice controls live in SEPARATE popovers now,
+  //    and a real click on a topbar/transport control closes any open popover. So do
+  //    the topbar click first, then open Comfort for its controls, then Voice for its.
+  await win.click('#view-toggle button[data-view="two"]');      // topbar (no panel)
+  await win.click('#settings-btn');                              // open Comfort
   await win.click('#theme-toggle button[data-theme="dark"]');
-  await win.click('#view-toggle button[data-view="two"]');
   await win.click('#font-larger');   // 20 -> 22
   await win.click('#font-larger');   // 22 -> 24
   await win.evaluate(() => {
@@ -304,6 +356,7 @@ async function dropBook(win) {
     r.dispatchEvent(new Event('change', { bubbles: true }));
   });
   // Phase 2.5 — non-default voice (already bm_george from 7c), speed, and pause.
+  await win.click('#voice-btn');                                 // open Voice
   await win.evaluate(() => {
     const r = document.getElementById('speed-range');
     r.value = '1.25';                // non-default reading speed

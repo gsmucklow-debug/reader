@@ -61,3 +61,20 @@ pause survive a restart), but ears must judge quality and feel:
 - [ ] End-of-chapter pause: **Off** continues immediately; **Short** / **Longer** wait
       the beat when crossing into a new chapter; pausing during the beat cancels it.
 - [ ] Voice / speed / pause survive an app restart.
+
+## Phase 2.6 — UI polish & heading reading (manual check)
+
+The smoke test proves the mechanism (popovers are mutually exclusive; a heading is a
+narratable span; the play button toggles `.is-playing`). These last items are visual /
+by-ear and want your eye:
+
+- [ ] **No menu bar** at the top of the window (no File / Edit / View / Window / Help).
+- [ ] **"Aa"** opens the **Comfort** popover (font, text size, theme, page width) and
+      **"Voice"** opens the **Voice** popover (voice, reading speed, end-of-chapter pause);
+      opening one closes the other; **Esc** or an outside click closes whichever is open.
+- [ ] Transport icons are **monochrome** (no colored emoji), theme-aware, and crisp; the
+      **play button is a clean circle** at every text size and in both themes, and its glyph
+      toggles between a **play triangle** (paused) and **two bars** (playing).
+- [ ] **Headings are read aloud and highlighted** — chapter titles, POV names like
+      **BARRY**, and dates like **November 2, 2018** are spoken in reading order with the
+      moving highlight, and there is **no duplicated, unread chapter title** on the page.
