@@ -50,6 +50,20 @@ test('pageForOffset maps a column offset to its page (single mode)', () => {
   assert.strictEqual(pageForOffset(3 * pitch, COL, GAP, 1), 3);
 });
 
+test('pageForOffset keeps a span in its own column when it sits mid/late in it', () => {
+  // A span's offsetLeft is anywhere in [col*pitch, col*pitch+colWidth). It belongs to
+  // THAT column. Rounding pushed late-in-column spans (offset/pitch fractional > 0.5)
+  // onto the next page, so a skip flipped to the wrong page then snapped back.
+  const pitch = COL + GAP;
+  assert.strictEqual(pageForOffset(400, COL, GAP, 1), 0, '400px into col 0 is still page 0');
+  assert.strictEqual(pageForOffset(599, COL, GAP, 1), 0, 'the far edge of col 0 is still page 0');
+  assert.strictEqual(pageForOffset(pitch + 400, COL, GAP, 1), 1, 'mid col 1 is page 1');
+  assert.strictEqual(pageForOffset(2 * pitch + 599, COL, GAP, 1), 2, 'late col 2 is page 2');
+  // two-page mode: a late-in-column span must not jump a whole spread either
+  assert.strictEqual(pageForOffset(400, COL, GAP, 2), 0);
+  assert.strictEqual(pageForOffset(pitch + 400, COL, GAP, 2), 0, 'col 1 still shares spread 0');
+});
+
 test('pageForOffset groups two columns per spread (two-page mode)', () => {
   const pitch = COL + GAP;
   assert.strictEqual(pageForOffset(0, COL, GAP, 2), 0);

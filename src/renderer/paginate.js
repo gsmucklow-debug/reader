@@ -48,7 +48,11 @@ function pageForOffset(offsetLeft, colWidth, gap, colsPerPage) {
   const pitch = colWidth + gap;
   const per = colsPerPage > 0 ? colsPerPage : 1;
   if (!(pitch > 0) || !(offsetLeft > 0)) return 0;
-  const col = Math.round(offsetLeft / pitch);
+  // floor, not round: a span at offsetLeft sits in column floor(offsetLeft/pitch).
+  // Its offset spans [col*pitch, col*pitch+colWidth); since colWidth < pitch the
+  // fraction is < 1, so floor lands on the right column. round pushed spans in the
+  // back half of a column onto the next page (a skip flipped forward then snapped back).
+  const col = Math.floor(offsetLeft / pitch);
   return Math.floor(col / per);
 }
 
