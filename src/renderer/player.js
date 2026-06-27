@@ -16,6 +16,7 @@ const Cursor = (typeof require !== 'undefined') ? require('./reading-cursor') : 
 function createPlayer(deps) {
   const { doc, synth, makeClip, view } = deps;
   const prefetchAhead = deps.prefetchAhead ?? 2;
+  const maxClips = deps.maxClips ?? 24; // bound decoded-audio retention (~tens of MB)
   const onStateChange = deps.onStateChange || (() => {}); // optional: notify UI when `playing` flips
 
   let addr = null;            // current sentence address
@@ -30,6 +31,14 @@ function createPlayer(deps) {
       const promise = synth(Cursor.textAt(doc, a)).then((r) => makeClip(r.wav, r.sampleRate));
       promise.catch(() => clips.delete(k)); // swallow prefetch rejection; evict poison so retry works
       clips.set(k, promise);
+      // Bound retention: drop the oldest-inserted clips once over the cap. Playing
+      // forward, the oldest are behind the cursor; a later rewind re-synthesizes from
+      // the on-disk cache (fast). Never evict the entry we just added.
+      while (clips.size > maxClips) {
+        const oldest = clips.keys().next().value;
+        if (oldest === k) break;
+        clips.delete(oldest);
+      }
     }
     return clips.get(k);
   }
@@ -46,7 +55,13 @@ function createPlayer(deps) {
     prefetch(addr);
     let clip;
     try { clip = await clipFor(addr); }
-    catch { return; }                 // synth failed; leave highlight, don't crash
+    catch {
+      // Synth failed for this sentence (the poison promise was already evicted in
+      // clipFor). If we're still the active request, stop cleanly so the button is
+      // honest and a single Play press retries; leave the highlight in place.
+      if (my === token && playing) setPlaying(false);
+      return;
+    }
     if (my !== token || !playing) return; // paused or seeked while synthesizing
     activeClip = clip;
     clip.play(() => onEnded(my));

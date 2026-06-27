@@ -1,5 +1,5 @@
 'use strict';
-// Content-addressed clip cache. Key = sha1(text|voice).wav, so identical sentences
+// Content-addressed clip cache. Key = sha1("<voice> <text>").wav, so identical sentences
 // (incl. rewind/re-read) reuse one file. Lives under userData/clips. Phase 3 may
 // formalize per-book folders; a global content hash is correct and dedupes for now.
 const crypto = require('node:crypto');

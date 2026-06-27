@@ -127,4 +127,48 @@ test('onStateChange fires when the book reaches its end and playback stops', asy
   assert.deepStrictEqual(states, [true, false]);
 });
 
+test('a synth failure stops playback (honest button) and a single Play retries', async () => {
+  let failNext = true;
+  const states = [];
+  const shown = [];
+  const deps = {
+    doc,
+    synth: async () => { if (failNext) throw new Error('boom'); return { wav: new Uint8Array(1), sampleRate: 24000 }; },
+    makeClip: async () => ({ play() {}, stop() {} }),
+    view: { show: (a) => shown.push(`${a.ci}.${a.pi}.${a.si}`) },
+    onStateChange: (v) => states.push(v),
+    prefetchAhead: 0,
+  };
+  const p = createPlayer(deps);
+  await p.play(); await tick();
+  assert.strictEqual(p.isPlaying(), false);            // stopped — button is honest, not stuck on ⏸
+  assert.deepStrictEqual(states, [true, false]);       // started, then stopped on failure
+  assert.strictEqual(shown[shown.length - 1], '0.0.0'); // highlight left on the failed sentence
+  failNext = false;
+  await p.play(); await tick();                         // single press retries (poison was evicted)
+  assert.strictEqual(p.isPlaying(), true);
+});
+
+test('clips cache is bounded — a clip evicted behind the cap is re-synthesized on rewind', async () => {
+  const bigDoc = { chapters: [{ paragraphs: [{ sentences: ['s0', 's1', 's2', 's3', 's4'] }] }] };
+  const counts = {};
+  let pendingEnded = null;
+  const p = createPlayer({
+    doc: bigDoc,
+    synth: async (t) => { counts[t] = (counts[t] || 0) + 1; return { wav: new Uint8Array(1), sampleRate: 24000 }; },
+    makeClip: async () => ({ play: (onEnded) => { pendingEnded = onEnded; }, stop: () => {} }),
+    view: { show: () => {} },
+    prefetchAhead: 0,
+    maxClips: 2,
+  });
+  const end = async () => { const f = pendingEnded; pendingEnded = null; if (f) f(); await tick(); };
+  await p.play(); await tick();   // s0 (count 1)
+  await end();                    // → s1
+  await end();                    // → s2 (s0 evicted: cap 2)
+  await end();                    // → s3 (s1 evicted)
+  assert.strictEqual(counts['s0'], 1);                 // synthesized once so far
+  await p.jumpTo({ ci: 0, pi: 0, si: 0 }); await tick(); // rewind to the evicted s0
+  assert.strictEqual(counts['s0'], 2);                 // re-synthesized → it really was evicted
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
