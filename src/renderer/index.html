@@ -13,10 +13,11 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="fonts.css" />
   </head>
-  <body data-theme="light" data-view="single">
+  <body data-theme="light" data-view="single" data-screen="library">
     <header id="topbar">
       <div class="brand">Reader</div>
       <nav class="controls">
+        <button type="button" id="library-btn" aria-label="Back to library" title="Back to library">← Library</button>
         <button type="button" id="toc-btn" aria-label="Table of contents" title="Chapters (t)">
           ☰ Chapters
         </button>
@@ -81,6 +82,17 @@
     </section>
 
     <main id="stage">
+      <section id="library-view">
+        <header class="library-head"><h1>Your library</h1></header>
+        <div id="library-empty" class="empty-card" hidden>
+          <h1>No books yet</h1>
+          <p>Drag an EPUB here, or click <strong>Add book</strong>.</p>
+        </div>
+        <h2 class="shelf-title" id="active-title" hidden>Reading</h2>
+        <div class="shelf" id="shelf-active"></div>
+        <h2 class="shelf-title" id="finished-title" hidden>Finished</h2>
+        <div class="shelf" id="shelf-finished"></div>
+      </section>
       <div id="empty-state">
         <div class="empty-card">
           <h1>Reader</h1>
@@ -140,6 +152,7 @@
     <script src="paginate.js"></script>
     <script src="reading-cursor.js"></script>
     <script src="player.js"></script>
+    <script src="library-view.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
