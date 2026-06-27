@@ -629,10 +629,13 @@ function updatePlayButton() {
 
 // --- Wire the playback controls + keyboard + click-to-play ----------------
 const P2 = () => state.player;
-document.getElementById('play-pause').addEventListener('click', async () => {
+document.getElementById('play-pause').addEventListener('click', async (e) => {
   await resumeAudio();
-  await P2()?.toggle();
-  updatePlayButton();
+  P2()?.toggle();          // not awaited: `playing` flips synchronously, so the
+  updatePlayButton();      // button updates instantly instead of after first decode
+  // Drop focus so a subsequent Space flows only through the keydown handler (avoids
+  // a focused-button native re-activation double-toggling play/pause).
+  e.currentTarget.blur();
 });
 document.getElementById('back-sent').addEventListener('click', () => P2()?.backSentence());
 document.getElementById('fwd-sent').addEventListener('click', () => P2()?.forwardSentence());
