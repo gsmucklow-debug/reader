@@ -60,6 +60,30 @@ test('treats ellipsis as part of the sentence, not a boundary', () => {
   );
 });
 
+test('treats a SPACED ellipsis (. . .) as part of the sentence, not tiny "." clips', () => {
+  // A space before a period never ends a real sentence; it's a typeset ellipsis.
+  // The bug split this into ["Then I remembered .", ".", ".", "this life too."],
+  // and each lone "." synthesized as an audible click/glitch.
+  assert.deepStrictEqual(
+    splitSentences('Then I remembered . . . this life too.'),
+    ['Then I remembered . . . this life too.']
+  );
+});
+
+test('a spaced ellipsis before a quote/em-dash stays in one sentence', () => {
+  assert.deepStrictEqual(
+    splitSentences('But I have . . .”—she braced herself—“memories of Vermont.'),
+    ['But I have . . .”—she braced herself—“memories of Vermont.']
+  );
+});
+
+test('a spaced ellipsis still lets the following real terminator split', () => {
+  assert.deepStrictEqual(
+    splitSentences('Wait . . . what happened? Nothing.'),
+    ['Wait . . . what happened?', 'Nothing.']
+  );
+});
+
 test('includes a trailing closing quote with the sentence', () => {
   assert.deepStrictEqual(
     splitSentences('She said, "Hello." Then she left.'),

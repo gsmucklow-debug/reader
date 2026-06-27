@@ -44,6 +44,11 @@ function isNonBoundaryDot(text, dotPos) {
     i--;
   }
 
+  // A space (or start-of-text) right before the dot => a free-standing "." — a
+  // typeset spaced ellipsis ". . ." or stray dot, never the end of a real sentence.
+  // Without this each dot became its own tiny "." sentence -> an audible click.
+  if (word === '') return true;
+
   // Single capital letter => an initial (e.g. "J." in "J. R. R. Tolkien").
   if (/^[A-Za-z]$/.test(word)) return true;
 
