@@ -284,18 +284,19 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    24→48); 68/68 unit tests green after the pick. The throwaway harnesses stay off master except
    `test/manual/spike-dtype-sweep.js` (kept for the dtype follow-up). **The shipped `.exe` will reflect
    these only after a rebuild** (`npm run dist:win`) — do that before the next user listen-test.
-2. **Dtype follow-up — validate on the M5, then maybe swap (own small phase). HIGH VALUE.** The spike's
-   biggest find: `q8` is ~4× slower than fp16/q4/q4f16 on CPU (planner-verified on Windows; see
-   findings). **The catch: all numbers are Windows x64, but the user's *primary* device is the MacBook
-   Pro M5 (ARM), which the spike never measured.** So before swapping the shipping dtype: re-run
-   `test/manual/spike-dtype-sweep.js` **on the M5** (the gating measurement — does the ~4× hold on ARM?),
-   account for **+70 MB** bundle, and re-run the **packaged-offline gate** (`verify-packaged.js`) since
-   the model blob changes. (A low-end laptop matters only if distributing publicly.) Swap to fp16 (or
-   q4f16, ~155 MB) **only if the gain holds on the M5**. CPU-only → consistent with the logged decision.
+2. **Dtype follow-up — validate on the M5, then maybe swap (own small phase). HIGH VALUE.** Plan ready:
+   [`plans/dtype-validate-and-swap.md`](./plans/dtype-validate-and-swap.md). The spike's biggest find:
+   `q8` is ~4× slower than fp16/q4/q4f16 on CPU (planner-verified on Windows; see findings). **The catch:
+   all numbers are Windows x64, but the user's *primary* device is the MacBook Pro M5 (ARM), which the
+   spike never measured.** The plan gates the swap on running `test/manual/spike-dtype-sweep.js` **on the
+   M5** (does the ~4× hold on ARM?); if it doesn't, keep `q8`. If it does: change two lines
+   (`tts-service.js`, `fetch-model.js`), eat **+70 MB** bundle, **bust the clip-cache key** (it lacks
+   dtype), and re-run the **packaged-offline gate**. CPU-only → consistent with the logged decision.
    **No GPU.**
-3. **User: listen + confirm (Phases 2, 2.5, 2.6).** Run the **fresh** packaged `.exe` (rebuilt today
-   18:16 with the two bug fixes — not an old Desktop/USB copy; rebuild with `npm run dist:win` if
-   unsure), drag in your books, press Space, and walk the manual checklists in
+3. **User: listen + confirm (Phases 2, 2.5, 2.6 + Part B rewind).** Run the **fresh** packaged `.exe`
+   (rebuilt today **19:11** — now includes the two bug fixes **and** the Part B prefetch/clip-cap wins;
+   not an old Desktop/USB copy; rebuild with `npm run dist:win` if unsure), drag in your books, press
+   Space, and walk the manual checklists in
    [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
    - **Phase 2:** voice/sync, ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and
      **network-off in the packaged `.exe`**.
