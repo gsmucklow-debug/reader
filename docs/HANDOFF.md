@@ -201,41 +201,82 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     wider prefetch, larger clip cap), and probe whether `onnxruntime-node` can use the user's NVIDIA
     GPU + the real speedup. **Output = numbers + a recommendation; no GPU code ships from the spike.**
     Decided deliberately because GPU **overrides the logged CPU-only decision**.
+- [x] **Phase 2.6 — UI polish & heading reading: built & planner-verified (2026-06-27, Windows).**
+  Built by a fresh Opus 4.8 builder (8 commits, `4dca458` → `68a0cb0`); planning session
+  **independently re-verified** — re-ran the suites here and read the diffs, not taken on "looks good."
+  - **What shipped:** (1) the default Electron **menu bar is gone** (`Menu.setApplicationMenu(null)`);
+    (2) the comfort popover is **split into mutually-exclusive Comfort (Aa) + Voice panels** (inner
+    control ids unchanged; Esc/outside-click close); (3) **inline-SVG transport icons** in
+    `currentColor` (kills the colored-emoji glyphs; play/pause toggles via an `.is-playing` class, not
+    `textContent`); (4) a **circular** play button; (5) **the narrator reads headings** — the parser
+    keeps headings as `{heading, sentences}` paragraphs in reading order, the TOC title is
+    **metadata-only** (`navTitles.get(href) ‖ firstHeadingText ‖ null`, never injected), one synthetic
+    `heading:2` is added **only** when a chapter has no heading of its own, and the renderer emits
+    `<hN class="chapter-heading">` wrapping the same per-sentence spans (narrated + highlighted).
+  - **Independently re-verified by the planner:**
+    - `npm test` → **68/68 green** (re-run here; 56 inherited + 8 Phase 2.6 + 4 from the bug fixes
+      below). Heading render + parser tests were written failing-first (TDD).
+    - `npm run smoke` → **PASS** (re-run here): the **first narrated span is `0.0.0` — the heading
+      itself** (headings spoken, in order), narration advances `0.0.0 → 0.1.0` through the real engine,
+      the popover split works, and no chapter-title is injected onto the page.
+  - **Accepted caveat now live (by design, design.md):** Gutenberg front-matter boilerplate ("The
+    Project Gutenberg eBook of…") is now read as a heading — **confirmed in the smoke output**. Low
+    impact.
+  - **AC split (coder's honest accounting, accepted):** test-verified — AC2 (popovers + persistence),
+    AC5 (heading narratable, no injected title), AC6 (no regression), AC3 `.is-playing` toggle.
+    **Human eye/ear still owes:** AC1 menu absence (one code line), AC3 icon crispness/monochrome,
+    AC4 the circle, theme contrast, and voice quality.
+- [x] **Two bugs from user testing root-caused & fixed (2026-06-27, Windows).** User ran the build and
+  reported three things; the builder used systematic-debugging, reproduced both real bugs with
+  failing-first unit tests, then fixed. Planner re-verified the diffs + suites.
+  - **`89a8db1` — audio glitching on `. . .` (spaced ellipsis).** The splitter treated a period with
+    whitespace before it as a boundary, emitting a lone `"."` sentence per dot → each synthesized as an
+    audible click. **Fix:** a dot with no word char before it (`word === ''`) is never a boundary.
+    (Unicode `…` and run-together `...` were already correct.)
+  - **`4f04141` — page flips forward then snaps back when skipping (single/two-page only).**
+    `pageForOffset` used `Math.round`; a span in the back ~40% of a column rounded up to the next page,
+    so a skip flipped to a wrong/empty page then snapped back on the next clip. **Fix:** `round → floor`
+    (a span at `offsetLeft` sits in column `floor(offsetLeft/pitch)` since `colWidth < pitch`). Scroll
+    mode was always fine (`scrollIntoView`). **Note:** this is a different function from the page-*count*
+    stride math (which still uses `round`/`ceil` per the existing gotcha) — don't conflate them.
+  - **Third report — flat question intonation: not a bug.** The `?` reaches the engine intact; weak
+    interrogative prosody is a **Kokoro model characteristic**. Changing it would mean a new TTS engine
+    (touches the logged CPU/offline decision) — left alone.
+  - Both fixes are **by-ear / by-eye in the end** — worth a quick confirm in the flagged passage, but
+    the root causes are solid and pinned by tests. **Exe rebuilt with both fixes (today 18:16).**
 
 ---
 
 ## Next up
 
-**Phases 2 and 2.5 are built & planner-verified on Windows. Phase 2.6 (UI polish + heading reading)
-and a voice-latency spike are planned and ready for fresh sessions. Then human-ears confirmation, the
-macOS build, and Phase 3.**
+**Phases 2, 2.5, and 2.6 are built & planner-verified on Windows (Phase 2.6 also picked up two
+user-reported bug fixes). The voice-latency spike is planned and ready for a fresh session. Then
+human-ears/eyes confirmation, the macOS build, and Phase 3.**
 
-1. **Build Phase 2.6 — UI polish & heading reading (plan ready; handed to a builder session
-   2026-06-27, in progress).** A fresh builder executes
-   [`plans/phase-2.6-ui-polish-headings.md`](./plans/phase-2.6-ui-polish-headings.md): remove the menu
-   bar, split the comfort popover into Comfort + Voice, inline-SVG transport icons, circular play
-   button, and **make the narrator read headings** (the only item with real parser/renderer + test
-   churn). Recommended: **Sonnet 4.6 medium** for items 1–4, **Opus 4.8 high** if doing item 5 in the
-   same session. Ships no player/engine changes.
-2. **Run the voice-latency spike (brief ready).** A fresh session runs
+1. **Run the voice-latency spike (brief ready).** A fresh session runs
    [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md): measure the delay, try the cheap
-   wins, probe GPU feasibility on the NVIDIA box → report numbers + a recommendation. Can run
-   alongside or after Phase 2.6. Recommended: **Opus 4.8 high**. **No GPU code ships from the spike.**
-3. **User: listen + confirm (Phases 2 and 2.5).** Run the **fresh** packaged `.exe` (not an old
-   Desktop/USB copy — rebuild with `npm run dist:win` if unsure), drag in your books, press Space, and
-   walk both manual checklists in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
+   wins, probe GPU feasibility on the NVIDIA box → report numbers + a recommendation. Recommended:
+   **Opus 4.8 high**. **No GPU code ships from the spike.**
+2. **User: listen + confirm (Phases 2, 2.5, 2.6).** Run the **fresh** packaged `.exe` (rebuilt today
+   18:16 with the two bug fixes — not an old Desktop/USB copy; rebuild with `npm run dist:win` if
+   unsure), drag in your books, press Space, and walk the manual checklists in
+   [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
    - **Phase 2:** voice/sync, ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and
      **network-off in the packaged `.exe`**.
    - **Phase 2.5:** each curated voice via ▶ preview (esp. the US male voices, graded C+); picking a
      voice restarts the current sentence in it; the speed slider changes pace and restarts on release;
      the end-of-chapter pause waits the beat (and pausing during the beat cancels it).
-   (Mechanism is smoke-proven; only the *listening* + *adapter-off* gestures can't be automated.)
-4. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
+   - **Phase 2.6:** no menu bar; Comfort/Voice popovers split cleanly; transport icons are crisp
+     monochrome; play button is a clean circle; **headings are read aloud + highlighted**; and the two
+     fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
+     single/two-page mode.
+   (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
+3. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
    Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`; the
    build lands the model at `Reader.app/Contents/Resources/assets/models` (matches `main.js`).
    **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper blocks launch —
    out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
-5. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+4. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
    from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
    are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
 
@@ -270,6 +311,19 @@ macOS build, and Phase 3.**
 ## Open questions / things to revisit later
 
 - App name — currently just "Reader" (working title). Pick a real one before Phase 3 polish.
+  **Deferred 2026-06-27 — "rethink later."** Brainstormed direction: real, plain word in the
+  *voice / being-read-to* lane; might be shared publicly (so distinctiveness + claimable
+  handle/domain matter). Research outcome: the read-aloud/TTS namespace is **brutally saturated**.
+  - **Taken / direct collisions (avoid):** *Aloud* (Aloud! TTS app), *Hark* (Hark Reader — a TTS
+    device for blind/low-vision, our exact niche), *Recite* (**Recite Me** web-accessibility
+    read-aloud tool — same space; also a podcast app, GitHub user, premium `.com`/`.app`), *Spoken*
+    (AAC TTS app), *Murmur* (TTS extension w/ word highlighting), *Cadence* (voice apps + the EDA
+    giant), *Lull* (sleep apps + LullaBook).
+  - **Survivors with no competing software found (worth claimability check next time):**
+    **Recital** (a reading performed aloud — leading candidate), **Hearken** (to listen), *Quoth*
+    (only a defunct word game; obscure).
+  - User leaned toward *Recite* but its handles/domains are all taken or premium → parked. Pick up
+    from the survivors, or explore a fresh coined/compound option.
 - Premium cloud voice as an optional toggle — possible future phase.
 - Couch/tablet listening (serve audio from PC over wifi) — possible future phase.
 - Bookmarks / notes — deferred enhancement to the library.
