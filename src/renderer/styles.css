@@ -261,6 +261,22 @@ body[data-view="continuous"] #reading {
   font-size: 1.05rem;
   line-height: 1;
 }
+/* Playback controls — big, easy to hit (design §2). #play-pause is the primary. */
+#back-para, #back-sent, #fwd-sent {
+  min-width: 48px;
+  height: 48px;
+  font-size: 1.25rem;
+}
+#play-pause {
+  min-width: 60px;
+  height: 60px;
+  font-size: 1.6rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+#play-pause:hover { border-color: var(--accent); filter: brightness(1.05); }
 #orientation {
   min-width: 240px;
   text-align: center;

@@ -26,6 +26,7 @@ const state = {
   pageCount: 1,
   font: null,      // null => default serif stack; otherwise a bundled family name
   geom: { colWidth: 0, gap: 48, per: 1 }, // last computed geometry, for flip math
+  player: null,    // Phase 2: the per-book narrator (ReaderPlayer)
 };
 
 // Bundled, OFL-licensed reading fonts (files under assets/fonts/, declared in
@@ -61,6 +62,21 @@ function showDocument(doc, fileName) {
   buildTOC();
   renderChapter(state.ci);
   paginate();
+
+  // Phase 2: build the narrator for this book. The injected synth wraps
+  // reader.synthesize so a failed sentence logs (was a silent dead-end) while
+  // still rejecting so the player's catch leaves the highlight in place.
+  state.player = ReaderPlayer.createPlayer({
+    doc,
+    synth: (text) => window.reader.synthesize(text, { voice: 'af_heart' }).catch((e) => {
+      console.warn('[Reader] synth failed:', e);
+      throw e;
+    }),
+    makeClip,
+    view: ReaderView,
+    prefetchAhead: 2,
+  });
+  updatePlayButton();
 }
 
 function renderChapter(ci) {
@@ -264,6 +280,11 @@ window.addEventListener('keydown', (e) => {
     case 't':
     case 'T':
       toggleTOC(); e.preventDefault(); break;
+    case ' ':
+    case 'Spacebar':
+      // Space = play/pause. resumeAudio() runs first (autoplay-policy gesture).
+      if (P2()) { resumeAudio().then(() => { P2().toggle(); updatePlayButton(); }); }
+      e.preventDefault(); break;
     default: break;
   }
 });
@@ -537,6 +558,99 @@ function goToPageContaining(sentenceEl) {
   updateOrientation();
 }
 window.goToPageContaining = goToPageContaining;
+
+// --------------------------------------------------------------------------
+// PHASE 2 — narration: Web Audio backend, the view adapter, and controls.
+// --------------------------------------------------------------------------
+
+// --- Audio playback backend (Web Audio; decodes WAV bytes from the engine) ---
+let audioCtx = null;
+function getAudioCtx() {
+  return (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
+}
+// An AudioContext starts `suspended` under the autoplay policy — the FIRST clip
+// plays silently (no error!) unless resumed inside a user gesture. Call this from
+// the play/click/space handlers (all real gestures).
+async function resumeAudio() {
+  const c = getAudioCtx();
+  if (c.state === 'suspended') await c.resume();
+}
+
+// makeClip: WAV bytes -> a clip object the controller can play()/stop().
+async function makeClip(wav, _sampleRate) {
+  const ctx = getAudioCtx();
+  // decodeAudioData wants an ArrayBuffer it can detach; copy out of the IPC view.
+  const bytes = wav instanceof Uint8Array ? wav : new Uint8Array(wav);
+  const buf = await ctx.decodeAudioData(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  );
+  let src = null;
+  return {
+    play(onEnded) {
+      src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = () => onEnded();
+      src.start();
+    },
+    stop() {
+      if (src) { src.onended = null; try { src.stop(); } catch (_) {} src = null; }
+    },
+  };
+}
+
+// view.show(addr): make sentence (ci,pi,si) visible + highlighted, mounting its
+// chapter first (only one chapter is mounted at a time — see app.js Phase 2 seam).
+const ReaderView = {
+  show(addr) {
+    const { ci, pi, si } = addr;
+    if (ci !== state.ci) goToChapter(ci);          // mount the target chapter first
+    const el = highlightSentence(ci, pi, si);       // existing seam (toggles .is-reading)
+    if (!el) return;
+    if (currentView() === 'continuous') scrollSentenceThreeQuarters(el);
+    else goToPageContaining(el);                    // existing seam (flips to its page)
+  },
+};
+
+// design.md §5: in scroll mode hold the highlighted line ~¾ up so the eyes rest.
+function scrollSentenceThreeQuarters(el) {
+  const vpRect = viewport.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const target = viewport.scrollTop + (elRect.top - vpRect.top) - vpRect.height * 0.25;
+  viewport.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+}
+
+function updatePlayButton() {
+  const btn = document.getElementById('play-pause');
+  const on = state.player && state.player.isPlaying();
+  btn.textContent = on ? '⏸' : '▶';
+  btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+}
+
+// --- Wire the playback controls + keyboard + click-to-play ----------------
+const P2 = () => state.player;
+document.getElementById('play-pause').addEventListener('click', async () => {
+  await resumeAudio();
+  await P2()?.toggle();
+  updatePlayButton();
+});
+document.getElementById('back-sent').addEventListener('click', () => P2()?.backSentence());
+document.getElementById('fwd-sent').addEventListener('click', () => P2()?.forwardSentence());
+document.getElementById('back-para').addEventListener('click', () => P2()?.backParagraph());
+
+// Click a sentence to start reading there. Delegated on readingEl (survives the
+// innerHTML swaps in renderChapter) so we attach exactly one listener.
+readingEl.addEventListener('click', async (e) => {
+  const span = e.target.closest('.sentence');
+  if (!span || !P2()) return;
+  await resumeAudio();
+  P2().jumpTo({
+    ci: +span.dataset.chapter,
+    pi: +span.dataset.paragraph,
+    si: +span.dataset.sentence,
+  });
+  updatePlayButton();
+});
 
 // --- Boot -----------------------------------------------------------------
 buildFontList();
