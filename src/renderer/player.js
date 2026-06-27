@@ -16,6 +16,7 @@ const Cursor = (typeof require !== 'undefined') ? require('./reading-cursor') : 
 function createPlayer(deps) {
   const { doc, synth, makeClip, view } = deps;
   const prefetchAhead = deps.prefetchAhead ?? 2;
+  const prefetchBehind = deps.prefetchBehind ?? 0; // keep N prior sentences warm so back-a-sentence is instant
   const maxClips = deps.maxClips ?? 24; // bound decoded-audio retention (~tens of MB)
   const onStateChange = deps.onStateChange || (() => {}); // optional: notify UI when `playing` flips
   const endChapterPauseMs = deps.endChapterPauseMs || (() => 0); // live: ms to rest when crossing a chapter
@@ -47,6 +48,14 @@ function createPlayer(deps) {
   function prefetch(a) {
     clipFor(a);
     for (const ahead of Cursor.aheadFrom(doc, a, prefetchAhead)) clipFor(ahead);
+    // Keep a few sentences BEHIND the cursor warm too, so a back-a-sentence (or a
+    // re-read) is an instant cache hit instead of a fresh synth. Walk prevAddress.
+    let back = a;
+    for (let i = 0; i < prefetchBehind; i++) {
+      back = Cursor.prevAddress(doc, back);
+      if (!back) break;
+      clipFor(back);
+    }
   }
 
   async function playCurrent() {
