@@ -184,15 +184,44 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     start`** — renderer changes don't appear until a rebuild. `dist/Reader-0.1.0-portable.exe` was
     rebuilt this session (confirmed). **⚠️ Any `.exe` copies the user keeps on Desktop/USB are still
     the old build and must be replaced with the fresh `dist/` one.**
+- [x] **Phase 2.6 brainstormed, designed & planned (2026-06-27).** User ran the Windows build, liked
+  the voice, and gave five UI/parse notes + a GPU question. Brainstormed and decided with the user;
+  three planning docs written:
+  - [`plans/2026-06-27-ui-polish-and-headings-design.md`](./plans/2026-06-27-ui-polish-and-headings-design.md)
+    — the decisions/why.
+  - [`plans/phase-2.6-ui-polish-headings.md`](./plans/phase-2.6-ui-polish-headings.md) — builder plan:
+    (1) remove the Electron menu bar; (2) split the comfort popover into **Comfort** + **Voice**;
+    (3) **inline-SVG** transport icons (kill the colored-emoji "blue" ⏮/⏸); (4) **circular** play
+    button; (5) **read headings** — parser keeps headings inline as `{heading, sentences}`, renderer
+    emits styled `<hN>` with sentence spans (narrated + highlighted), TOC title becomes metadata-only
+    (Chapters panel + strip, no injected duplicate), chapters with no heading fall back to the TOC
+    title rendered+read. **Ready for a fresh builder; not built yet.**
+  - [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md) — an **investigation** (not a
+    feature): measure where the synth delay is, try the cheap no-divergence wins (launch warm-up,
+    wider prefetch, larger clip cap), and probe whether `onnxruntime-node` can use the user's NVIDIA
+    GPU + the real speedup. **Output = numbers + a recommendation; no GPU code ships from the spike.**
+    Decided deliberately because GPU **overrides the logged CPU-only decision**.
 
 ---
 
 ## Next up
 
-**Phases 2 and 2.5 are built & planner-verified on Windows. What remains is human-ears confirmation
-(voice quality, speed feel, offline) and the macOS build — then Phase 3.**
+**Phases 2 and 2.5 are built & planner-verified on Windows. Phase 2.6 (UI polish + heading reading)
+and a voice-latency spike are planned and ready for fresh sessions. Then human-ears confirmation, the
+macOS build, and Phase 3.**
 
-1. **User: listen + confirm (Phases 2 and 2.5).** Run the **fresh** packaged `.exe` (not an old
+1. **Build Phase 2.6 — UI polish & heading reading (plan ready; handed to a builder session
+   2026-06-27, in progress).** A fresh builder executes
+   [`plans/phase-2.6-ui-polish-headings.md`](./plans/phase-2.6-ui-polish-headings.md): remove the menu
+   bar, split the comfort popover into Comfort + Voice, inline-SVG transport icons, circular play
+   button, and **make the narrator read headings** (the only item with real parser/renderer + test
+   churn). Recommended: **Sonnet 4.6 medium** for items 1–4, **Opus 4.8 high** if doing item 5 in the
+   same session. Ships no player/engine changes.
+2. **Run the voice-latency spike (brief ready).** A fresh session runs
+   [`plans/spike-voice-latency.md`](./plans/spike-voice-latency.md): measure the delay, try the cheap
+   wins, probe GPU feasibility on the NVIDIA box → report numbers + a recommendation. Can run
+   alongside or after Phase 2.6. Recommended: **Opus 4.8 high**. **No GPU code ships from the spike.**
+3. **User: listen + confirm (Phases 2 and 2.5).** Run the **fresh** packaged `.exe` (not an old
    Desktop/USB copy — rebuild with `npm run dist:win` if unsure), drag in your books, press Space, and
    walk both manual checklists in [`../HOW-TO-RUN.md`](../HOW-TO-RUN.md):
    - **Phase 2:** voice/sync, ¾-up scroll, rewind controls, cross-chapter, instant 2nd play, and
@@ -201,12 +230,12 @@ runs on Windows 11 + macOS (MacBook Pro M5).
      voice restarts the current sentence in it; the speed slider changes pace and restarts on release;
      the end-of-chapter pause waits the beat (and pausing during the beat cancels it).
    (Mechanism is smoke-proven; only the *listening* + *adapter-off* gestures can't be automated.)
-2. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
+4. **User: confirm the Mac build.** On the M5 run `npm install` then `npm run dist:mac`, right-click→
    Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at `npm install`; the
    build lands the model at `Reader.app/Contents/Resources/assets/models` (matches `main.js`).
    **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper blocks launch —
    out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
-3. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
+5. **Then: Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
    from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
    are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
 
