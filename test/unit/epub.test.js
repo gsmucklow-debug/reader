@@ -12,6 +12,7 @@ const {
   readingOrder,
   htmlToBlocks,
   parseEpub,
+  coverImage,
 } = require('../../src/parse/epub');
 
 const FIX = path.join(__dirname, '..', 'fixtures');
@@ -192,6 +193,40 @@ test('htmlToBlocks returns block text in order and skips nav/header/footer/scrip
     { tag: 'p', text: 'First paragraph.' },
     { tag: 'p', text: 'Second paragraph across lines.' },
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// Cover extraction (Phase 3): parseOpf coverId + coverImage()
+// ---------------------------------------------------------------------------
+
+test('parseOpf finds the EPUB3 cover-image item id', () => {
+  const opf = `<?xml version="1.0"?><package><metadata><dc:title>T</dc:title></metadata>
+    <manifest>
+      <item id="cov" href="img/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+      <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine><itemref idref="c1"/></spine></package>`;
+  const r = parseOpf(opf, 'OEBPS/content.opf');
+  assert.strictEqual(r.coverId, 'cov');
+});
+
+test('parseOpf finds the EPUB2 meta-name=cover item id', () => {
+  const opf = `<?xml version="1.0"?><package><metadata><dc:title>T</dc:title>
+      <meta name="cover" content="theCover"/></metadata>
+    <manifest>
+      <item id="theCover" href="cover.png" media-type="image/png"/>
+      <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine><itemref idref="c1"/></spine></package>`;
+  const r = parseOpf(opf, 'content.opf');
+  assert.strictEqual(r.coverId, 'theCover');
+});
+
+test('coverImage returns {bytes,ext} or null for a real EPUB, never throws', async () => {
+  const buf = fs.readFileSync(path.join(FIX, 'alice.epub'));
+  const cov = await coverImage(buf);
+  if (cov !== null) {
+    assert.ok(cov.bytes && cov.bytes.length > 0);
+    assert.match(cov.ext, /^(jpg|jpeg|png|gif|webp|svg)$/);
+  }
 });
 
 // ---------------------------------------------------------------------------

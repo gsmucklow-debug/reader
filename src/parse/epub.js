@@ -78,6 +78,20 @@ function parseOpf(opfXml, opfPath) {
     });
   });
 
+  // Cover id: EPUB3 uses properties="cover-image"; EPUB2 uses <meta name="cover" content="itemId">
+  let metaCoverId = null;
+  $('metadata').find('*').each((_, el) => {
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'meta' && ($(el).attr('name') || '').toLowerCase() === 'cover') {
+      metaCoverId = $(el).attr('content') || null;
+    }
+  });
+  let coverId = null;
+  for (const [id, item] of byId) {
+    if (/\bcover-image\b/.test(item.properties)) { coverId = id; break; }
+  }
+  if (!coverId && metaCoverId && byId.has(metaCoverId)) coverId = metaCoverId;
+
   const spine = [];
   $('spine itemref').each((_, el) => {
     const idref = $(el).attr('idref');
@@ -106,7 +120,7 @@ function parseOpf(opfXml, opfPath) {
     }
   }
 
-  return { title, spine, toc };
+  return { title, spine, toc, coverId };
 }
 
 /**
@@ -260,6 +274,41 @@ async function parseEpub(buffer) {
   return { title: parsed.title, chapters };
 }
 
+const EXT_BY_MIME = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+  'image/webp': 'webp', 'image/svg+xml': 'svg',
+};
+
+/** Extract the cover image bytes from an EPUB buffer, or null if none. */
+async function coverImage(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const containerFile = zip.file('META-INF/container.xml');
+    if (!containerFile) return null;
+    const opfPath = findOpfPath(await containerFile.async('string'));
+    const opfFile = zip.file(opfPath);
+    if (!opfFile) return null;
+    const opfXml = await opfFile.async('string');
+    const parsed = parseOpf(opfXml, opfPath);
+    if (!parsed.coverId) return null;
+    const $ = cheerio.load(opfXml, { xmlMode: true });
+    const opfDir = dirOf(opfPath);
+    let href = null, mime = '';
+    $('manifest item').each((_, el) => {
+      if ($(el).attr('id') === parsed.coverId) {
+        href = resolveHref($(el).attr('href') || '', opfDir);
+        mime = $(el).attr('media-type') || '';
+      }
+    });
+    if (!href) return null;
+    const f = zip.file(href);
+    if (!f) return null;
+    const bytes = await f.async('nodebuffer');
+    const ext = EXT_BY_MIME[mime] || (href.split('.').pop() || 'img').toLowerCase();
+    return { bytes, ext };
+  } catch { return null; } // a missing/odd cover must never break add
+}
+
 module.exports = {
   findOpfPath,
   parseOpf,
@@ -268,4 +317,5 @@ module.exports = {
   htmlToBlocks,
   resolveHref,
   parseEpub,
+  coverImage,
 };
