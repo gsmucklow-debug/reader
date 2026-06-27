@@ -299,15 +299,23 @@ body[data-view="continuous"] #reading {
   height: 48px;
   font-size: 1.25rem;
 }
+/* A fixed equal width/height + zero padding keeps it a clean circle at every text
+   size (the bottom-bar's horizontal padding/min-width would otherwise skew it oval). */
 #play-pause {
-  min-width: 60px;
+  width: 60px;
   height: 60px;
-  font-size: 1.6rem;
+  min-width: 60px;
+  padding: 0;
   border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
 }
+/* The primary control's glyph is a touch larger than the plain transport icons. */
+#play-pause svg { width: 26px; height: 26px; }
 #play-pause:hover { border-color: var(--accent); filter: brightness(1.05); }
 #orientation {
   min-width: 240px;
