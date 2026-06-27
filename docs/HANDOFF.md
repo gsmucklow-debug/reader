@@ -338,7 +338,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 - Electron (not Tauri) → simplest path to all-JS, double-clickable, cross-platform.
 - CPU (not GPU) → identical behavior on Win/Mac; model is fast enough **on the right dtype** (the
   spike found `q8` is a ~4× slow outlier — "fast enough" assumes fp16/q4f16; see findings + Next up).
-- **GPU is a dead end on this stack — do not revisit (spike-verified 2026-06-27).** The user asked about
+- **GPU is a dead end on this stack — do not revisit (spike-found, builder-reported 2026-06-27; the
+  planner re-ran the dtype sweep but not the GPU probe).** The user asked about
   running Kokoro on the NVIDIA GPU; the spike proved there is no working path: `onnxruntime-node`'s
   prebuilt Node binding ships only CPU + DirectML (no CUDA); **DirectML loads Kokoro then fails at the
   vocoder's ConvTranspose on first inference**; CoreML would be a separate Mac backend. Every GPU option
