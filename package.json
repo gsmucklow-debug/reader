@@ -28,9 +28,19 @@
     "files": [
       "src/**/*",
       "assets/**/*",
+      "!assets/models/**/*",
       "package.json",
       "!test/**/*",
       "!docs/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/onnxruntime-node/**"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/models",
+        "to": "assets/models"
+      }
     ],
     "win": {
       "target": "portable",
