@@ -149,6 +149,7 @@ function createPlayer(deps) {
       return seekTo(n || addr);
     },
     jumpTo: (a) => { setPlaying(true); return seekTo(a); }, // clicking a sentence starts playback there
+    showAt: (a) => seekTo(a), // position + highlight at an address without auto-playing
     isPlaying: () => playing,
     current: () => addr,
   };

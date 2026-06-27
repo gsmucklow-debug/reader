@@ -31,6 +31,7 @@ const state = {
   voice: 'af_heart',          // curated Kokoro voice id
   speed: 1,                   // reading-speed multiplier (Kokoro `speed`)
   endChapterPause: 'off',     // 'off' | 'short' | 'longer' — rest beat when crossing a chapter
+  currentBookId: null,        // Phase 3: open book's library id (for progress saves)
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -96,17 +97,78 @@ function showDocument(doc, fileName) {
 }
 
 function renderChapter(ci) {
-  readingEl.style.transform = 'none';
+  readingEl.style.transform = ‘none’;
   state.page = 0;
   readingEl.innerHTML = window.ReaderRender.renderChapterHTML(state.doc.chapters[ci], ci);
   viewport.scrollTop = 0;
 }
 
+// --- Library shell (Phase 3) ----------------------------------------------
+
+// flushProgress is defined in Task 7; declare as a no-op now so references below work.
+// Task 7 will replace this with the real debounced implementation.
+function flushProgress() {}
+
+async function showLibrary() {
+  if (state.player) state.player.pause();
+  flushProgress();
+  pendingAddr = null;                 // clear cross-book contamination (advisor note)
+  clearTimeout(progressTimer);
+  state.currentBookId = null;
+  const { active, finished } = await window.reader.libraryShelf();
+  await ReaderLibrary.render(active, finished, { onOpen: openFromLibrary, onRemove: removeFromLibrary });
+  ReaderLibrary.show();
+}
+
+async function openFromLibrary(rec) {
+  // Clear any stale pending progress before setting the new book (cross-book guard).
+  pendingAddr = null;
+  clearTimeout(progressTimer);
+  const { doc, progress } = await window.reader.libraryOpen(rec.id);
+  state.currentBookId = rec.id;
+  ReaderLibrary.hide();
+  showDocument(doc, rec.fileName);
+  const start = progress || ReaderCursor.firstAddress(doc);
+  if (start && state.player) {
+    state.player.showAt(start);
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (_) {}
+      state.player.showAt(start); // re-flip to correct page with real metrics
+    }
+  }
+}
+
+async function removeFromLibrary(rec) {
+  if (!window.confirm(`Remove "${rec.title}" from your library?`)) return;
+  await window.reader.libraryRemove(rec.id);
+  await showLibrary();
+}
+
+async function addAndOpen(bytes, fileName) {
+  try {
+    const rec = await window.reader.libraryAdd(bytes, fileName);
+    await openFromLibrary(rec);
+  } catch (err) {
+    // Show error on the library empty card (not the reader empty-state which is hidden).
+    const el = document.getElementById(‘library-empty’);
+    if (el) {
+      el.innerHTML = ‘<h1>Couldn\’t open that file</h1><p>It may not be a valid EPUB. Try another book.</p>’;
+      el.hidden = false;
+    } else {
+      reportError(err);
+    }
+  }
+}
+
+// Progress tracking state (placeholders; Task 7 replaces flushProgress with the real impl).
+let progressTimer = null;
+let pendingAddr = null;
+
 function reportError(err) {
-  console.error('[Reader] failed to open book:', err);
-  emptyState.querySelector('.empty-card').innerHTML =
-    '<h1>Couldn’t open that file</h1><p>It may not be a valid EPUB. ' +
-    'Try another book.</p>';
+  console.error(‘[Reader] failed to open book:’, err);
+  emptyState.querySelector(‘.empty-card’).innerHTML =
+    ‘<h1>Couldn\’t open that file</h1><p>It may not be a valid EPUB. ‘ +
+    ‘Try another book.</p>’;
   emptyState.hidden = false;
   viewport.hidden = true;
   bottomBar.hidden = true;
@@ -329,12 +391,8 @@ function jumpChapterEdge(toEnd) {
 // --- Add button + drag-and-drop ------------------------------------------
 
 document.getElementById('add-btn').addEventListener('click', async () => {
-  try {
-    const result = await window.reader.pickAndParse();
-    if (result) showDocument(result.doc, result.fileName);
-  } catch (err) {
-    reportError(err);
-  }
+  const picked = await window.reader.pickFileBytes();
+  if (picked) addAndOpen(new Uint8Array(picked.bytes), picked.fileName);
 });
 
 // Critical: preventDefault on dragover/drop, or Electron navigates the window
@@ -360,13 +418,8 @@ window.addEventListener('drop', async (e) => {
 
   const file = e.dataTransfer && e.dataTransfer.files[0];
   if (!file) return;
-  try {
-    const buf = await file.arrayBuffer();
-    const doc = await window.reader.parseBuffer(new Uint8Array(buf));
-    showDocument(doc, file.name);
-  } catch (err) {
-    reportError(err);
-  }
+  const buf = await file.arrayBuffer();
+  addAndOpen(new Uint8Array(buf), file.name);
 });
 
 // --- View modes -----------------------------------------------------------
@@ -790,6 +843,7 @@ document.getElementById('play-pause').addEventListener('click', async (e) => {
   // a focused-button native re-activation double-toggling play/pause).
   e.currentTarget.blur();
 });
+document.getElementById('library-btn').addEventListener('click', showLibrary);
 document.getElementById('back-sent').addEventListener('click', () => P2()?.backSentence());
 document.getElementById('fwd-sent').addEventListener('click', () => P2()?.forwardSentence());
 document.getElementById('back-para').addEventListener('click', () => P2()?.backParagraph());
@@ -812,3 +866,4 @@ readingEl.addEventListener('click', async (e) => {
 buildFontList();
 buildVoiceList(); // before loadSettings() so applySettings' markActiveVoice has buttons
 loadSettings();
+showLibrary(); // shelf is home (Phase 3)

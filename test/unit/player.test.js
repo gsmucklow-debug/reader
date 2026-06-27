@@ -225,4 +225,15 @@ test('end-of-chapter pause is cancelled by pause() during the beat', async (t) =
   assert.strictEqual(p.isPlaying(), false);
 });
 
+test('showAt positions the cursor and highlights without auto-playing', async () => {
+  const { deps, shown } = fakeDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0 });
+  // start paused, seek to 0.1.0 via showAt
+  await p.showAt({ ci: 0, pi: 1, si: 0 });
+  await tick();
+  assert.strictEqual(shown[shown.length - 1], '0.1.0', 'view.show called with the address');
+  assert.strictEqual(p.isPlaying(), false, 'not playing after showAt');
+  assert.deepStrictEqual(p.current(), { ci: 0, pi: 1, si: 0 }, 'current() updated');
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
