@@ -271,6 +271,7 @@ document.getElementById('next-chapter').addEventListener('click', () => goToChap
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (tocPanel.classList.contains('open')) { closeTOC(); e.preventDefault(); }
+    if (!comfortPanel.hidden || !voicePanel.hidden) { closePopovers(); e.preventDefault(); }
     return;
   }
   // don't hijack typing in inputs
@@ -386,9 +387,20 @@ function setView(view) {
 
 // --- Comfort controls -----------------------------------------------------
 
-const settingsPanel = document.getElementById('settings-panel');
-document.getElementById('settings-btn').addEventListener('click', () => {
-  settingsPanel.hidden = !settingsPanel.hidden;
+// Two mutually-exclusive popovers: "Aa" → Comfort (look), "Voice" → Voice (sound).
+// Opening one closes the other; clicking the same button again toggles it closed.
+const comfortPanel = document.getElementById('comfort-panel');
+const voicePanel = document.getElementById('voice-panel');
+function openOnly(panel) {
+  for (const p of [comfortPanel, voicePanel]) p.hidden = (p !== panel) ? true : !p.hidden;
+}
+function closePopovers() { comfortPanel.hidden = true; voicePanel.hidden = true; }
+document.getElementById('settings-btn').addEventListener('click', () => openOnly(comfortPanel));
+document.getElementById('voice-btn').addEventListener('click', () => openOnly(voicePanel));
+// An outside click closes both; clicks on the panels or their buttons don't (guard).
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#comfort-panel,#voice-panel,#settings-btn,#voice-btn')) return;
+  closePopovers();
 });
 
 function setFontSize(px) {

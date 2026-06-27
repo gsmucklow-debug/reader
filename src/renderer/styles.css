@@ -96,8 +96,8 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 .segmented button + button { border-left: 1px solid var(--line); }
 .segmented button.active { background: var(--accent); color: #fff; }
 
-/* ---- Settings panel ---- */
-#settings-panel {
+/* ---- Settings popovers (Comfort + Voice; mutually exclusive, one shown) ---- */
+.popover {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;

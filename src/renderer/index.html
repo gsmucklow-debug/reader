@@ -29,10 +29,12 @@
         <button type="button" id="settings-btn" aria-label="Comfort settings" title="Comfort settings">
           Aa
         </button>
+        <button type="button" id="voice-btn" aria-label="Voice settings" title="Voice settings">Voice</button>
       </nav>
     </header>
 
-    <section id="settings-panel" hidden aria-label="Comfort settings">
+    <!-- Comfort popover: how the page LOOKS (font, size, theme, width). -->
+    <section id="comfort-panel" class="popover" hidden aria-label="Comfort settings">
       <div class="setting setting-font">
         <span>Font</span>
         <div class="font-list" id="font-list" role="listbox" aria-label="Reading font"></div>
@@ -55,6 +57,10 @@
         <label for="width-range">Page width</label>
         <input id="width-range" type="range" min="34" max="80" step="2" value="46" />
       </div>
+    </section>
+
+    <!-- Voice popover: how the page SOUNDS (voice, speed, end-of-chapter pause). -->
+    <section id="voice-panel" class="popover" hidden aria-label="Voice settings">
       <div class="setting setting-voice">
         <span>Voice</span>
         <div class="voice-list" id="voice-list" role="listbox" aria-label="Narration voice"></div>
