@@ -105,9 +105,22 @@ function renderChapter(ci) {
 
 // --- Library shell (Phase 3) ----------------------------------------------
 
-// flushProgress is defined in Task 7; declare as a no-op now so references below work.
-// Task 7 will replace this with the real debounced implementation.
-function flushProgress() {}
+// Progress tracking: capture at every sentence show, debounce disk writes, flush on stop/quit.
+let progressTimer = null;
+let pendingAddr = null;
+
+function recordProgress(addr) {
+  if (!state.currentBookId) return;
+  pendingAddr = addr;
+  clearTimeout(progressTimer);
+  progressTimer = setTimeout(flushProgress, 1500);
+}
+function flushProgress() {
+  clearTimeout(progressTimer);
+  if (!state.currentBookId || !pendingAddr) return;
+  window.reader.libraryUpdateProgress(state.currentBookId, pendingAddr)
+    .catch((e) => console.warn('[Reader] progress save failed:', e));
+}
 
 async function showLibrary() {
   if (state.player) state.player.pause();
@@ -159,10 +172,6 @@ async function addAndOpen(bytes, fileName) {
     }
   }
 }
-
-// Progress tracking state (placeholders; Task 7 replaces flushProgress with the real impl).
-let progressTimer = null;
-let pendingAddr = null;
 
 function reportError(err) {
   console.error(‘[Reader] failed to open book:’, err);
@@ -790,6 +799,7 @@ const ReaderView = {
     const { ci, pi, si } = addr;
     if (ci !== state.ci) goToChapter(ci);          // mount the target chapter first
     const el = highlightSentence(ci, pi, si);       // existing seam (toggles .is-reading)
+    recordProgress(addr);                           // Phase 3: capture at every sentence advance
     if (!el) return;
     if (currentView() === 'continuous') scrollSentenceThreeQuarters(el);
     else goToPageContaining(el);                    // existing seam (flips to its page)
@@ -811,6 +821,7 @@ function updatePlayButton() {
   // which would clobber the inline <svg> children).
   btn.classList.toggle('is-playing', on);
   btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+  if (!on) flushProgress(); // Phase 3: pause / book-end → persist immediately
 }
 
 // --- Apply-change helpers (wired to the UI in Task 4; also used by settings-load) ---
@@ -860,6 +871,14 @@ readingEl.addEventListener('click', async (e) => {
     si: +span.dataset.sentence,
   });
   updatePlayButton();
+});
+
+// Quit-flush: a debounced write can be in flight when the window closes.
+// Use a synchronous IPC on beforeunload to guarantee the latest address persists.
+window.addEventListener('beforeunload', () => {
+  if (state.currentBookId && pendingAddr) {
+    try { window.reader.libraryUpdateProgressSync(state.currentBookId, pendingAddr); } catch (_) {}
+  }
 });
 
 // --- Boot -----------------------------------------------------------------
