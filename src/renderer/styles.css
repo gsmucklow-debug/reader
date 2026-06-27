@@ -182,8 +182,18 @@ input[type="range"] { accent-color: var(--accent); }
 }
 
 .chapter { margin: 0; }
-.chapter-title { font-size: 1.5em; color: var(--ink); margin: 0 0 0.8em; }
 .para { margin: 0 0 1em; }
+
+/* Headings the book carries (chapter titles, POV names, dates) are real, narratable
+   paragraphs. Sized by level; calm and consistent with the reading view. The
+   .is-reading highlight reads on a heading span like any sentence (same span class). */
+.chapter-heading { color: var(--ink); font-weight: 600; line-height: 1.3; margin: 1.2em 0 0.6em; }
+.chapter-heading:first-child { margin-top: 0; }
+h1.chapter-heading { font-size: 1.7em; }
+h2.chapter-heading { font-size: 1.5em; }
+h3.chapter-heading { font-size: 1.3em; }
+h4.chapter-heading { font-size: 1.15em; }
+h5.chapter-heading, h6.chapter-heading { font-size: 1.05em; }
 
 /* A sentence is its own element so Phase 2 can highlight + seek it. */
 .sentence.is-reading { background: var(--highlight); border-radius: 4px; }

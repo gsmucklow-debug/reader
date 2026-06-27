@@ -38,11 +38,17 @@ function escapeHtml(s) {
 function renderChapterHTML(chapter, ci) {
   const out = [];
   out.push(`<section class="chapter" data-chapter="${ci}">`);
-  if (chapter.title) {
-    out.push(`<h2 class="chapter-title">${escapeHtml(chapter.title)}</h2>`);
-  }
+  // chapter.title is metadata ONLY (Chapters panel + "Chapter X of Y" strip) — it is
+  // never injected here. Headings the book carries are real paragraphs (see below),
+  // so they render and narrate in reading order instead of as a separate, unread title.
   chapter.paragraphs.forEach((para, pi) => {
-    out.push(`<p class="para" data-chapter="${ci}" data-paragraph="${pi}">`);
+    // A heading paragraph renders as <hN class="chapter-heading"> (level clamped
+    // 1..6); a normal paragraph as <p class="para">. Both hold the SAME sentence
+    // spans, so the cursor/highlight/pagination address them identically.
+    const lvl = Math.min(6, Math.max(1, para.heading || 0));
+    const tag = para.heading ? `h${lvl}` : 'p';
+    const cls = para.heading ? 'chapter-heading' : 'para';
+    out.push(`<${tag} class="${cls}" data-chapter="${ci}" data-paragraph="${pi}">`);
     para.sentences.forEach((sentence, si) => {
       out.push(
         `<span class="sentence" data-chapter="${ci}" data-paragraph="${pi}"` +
@@ -51,7 +57,7 @@ function renderChapterHTML(chapter, ci) {
       // a space between sentences so they don't run together visually
       out.push(' ');
     });
-    out.push('</p>');
+    out.push(`</${tag}>`);
   });
   out.push('</section>');
   return out.join('');

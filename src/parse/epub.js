@@ -183,14 +183,18 @@ function htmlToBlocks(html) {
   return blocks;
 }
 
-const HEADING = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const HEADING_LEVEL = { h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
 
 /**
  * Parse a whole EPUB buffer into the normalized Document contract:
- *   Document { title, chapters: [ { title, paragraphs: [ { sentences: [] } ] } ] }
+ *   Document { title, chapters: [ { title, paragraphs: [ { heading?, sentences:[] } ] } ] }
  *
- * One spine document => one chapter. The first heading in a doc becomes the
- * chapter title; remaining blocks become paragraphs split into sentences.
+ * One spine document => one chapter. Headings are KEPT in reading order as
+ * paragraphs carrying a `heading` level (so the renderer can show them and the
+ * narrator reads them). The chapter `title` is metadata only (Chapters panel +
+ * "Chapter X of Y" strip): navTitles.get(href) || firstHeadingText || null — it is
+ * NOT injected into the page. A chapter with no heading of its own but a known title
+ * gets ONE synthesized leading heading so every chapter has a visible, spoken header.
  */
 async function parseEpub(buffer) {
   const zip = await JSZip.loadAsync(buffer);
@@ -223,22 +227,33 @@ async function parseEpub(buffer) {
     const blocks = htmlToBlocks(await f.async('string'));
     if (blocks.length === 0) continue;
 
-    // Pull (and skip) a leading in-doc heading exactly as before, so body text
-    // is unchanged; it's only a fallback for the title now.
-    let docHeading = null;
+    // Keep every block in reading order; a heading block becomes a paragraph that
+    // carries its level, so it renders as <hN> and is narrated like any sentence.
+    let firstHeadingText = null;
+    let hasOwnHeading = false;
     const paragraphs = [];
     for (const b of blocks) {
-      if (HEADING.has(b.tag) && docHeading === null) {
-        docHeading = b.text;
-        continue;
-      }
+      const lvl = HEADING_LEVEL[b.tag];
       const sentences = splitSentences(b.text);
-      if (sentences.length > 0) paragraphs.push({ sentences });
+      if (sentences.length === 0) continue;
+      if (lvl) {
+        if (firstHeadingText === null) firstHeadingText = b.text;
+        hasOwnHeading = true;
+        paragraphs.push({ heading: lvl, sentences });
+      } else {
+        paragraphs.push({ sentences });
+      }
     }
     if (paragraphs.length === 0) continue; // e.g. a pure cover/image page
 
-    // Title priority: the TOC's name for this file, then a heading inside it.
-    const title = navTitles.get(href) || docHeading || null;
+    // Title is metadata only: the TOC's name for this file, then a heading inside it.
+    const title = navTitles.get(href) || firstHeadingText || null;
+    // Fallback: a chapter with no heading of its own but a known title gets a
+    // synthesized leading heading so every chapter has a visible, spoken header.
+    // A chapter that already has its own heading is NOT given one (no duplication).
+    if (!hasOwnHeading && title) {
+      paragraphs.unshift({ heading: 2, sentences: splitSentences(title) });
+    }
     chapters.push({ title, paragraphs });
   }
 
