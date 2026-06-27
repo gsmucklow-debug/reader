@@ -563,6 +563,9 @@ function gatherSettings() {
     textSize: currentFontSize(),
     pageWidth: parseFloat(widthRange.value),
     viewMode: document.body.dataset.view,
+    voice: state.voice,
+    speed: state.speed,
+    endChapterPause: state.endChapterPause,
   };
 }
 
@@ -589,6 +592,21 @@ function applySettings(s) {
   if ('font' in s) {
     const f = FONTS.find((x) => x.family === s.font);
     applyFont(s.font || null, f ? f.fallback : 'serif');
+  }
+  // Voice/speed/pause: set state + reflect the UI directly. NOT via setVoice/setSpeed —
+  // those reload()+save, which would be a needless storm during a boot-time load (and
+  // there's no player yet). The live synth closure reads state.voice/speed on first play.
+  if (typeof s.voice === 'string') { state.voice = s.voice; markActiveVoice(); }
+  if (Number.isFinite(s.speed)) {
+    state.speed = s.speed;
+    speedRange.value = String(s.speed);
+    speedLabel.textContent = fmtSpeed(s.speed);
+  }
+  if (s.endChapterPause in PAUSE_MS) {
+    state.endChapterPause = s.endChapterPause;
+    for (const b of document.querySelectorAll('#pause-toggle button')) {
+      b.classList.toggle('active', b.dataset.pause === s.endChapterPause);
+    }
   }
 }
 

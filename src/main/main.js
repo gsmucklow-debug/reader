@@ -62,12 +62,12 @@ function ttsRequest(payload, timeoutMs = 60000) {
 }
 
 // Global comfort settings live in a single JSON file in the OS app-data folder.
-// This is NOT per-book memory or reading position (Phase 3) — only the few
-// global fields: font, theme, textSize, pageWidth, viewMode.
+// This is NOT per-book memory or reading position (Phase 3) — only the few global
+// fields: font, theme, textSize, pageWidth, viewMode, voice, speed, endChapterPause.
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
-const SETTINGS_KEYS = ['font', 'theme', 'textSize', 'pageWidth', 'viewMode'];
+const SETTINGS_KEYS = ['font', 'theme', 'textSize', 'pageWidth', 'viewMode', 'voice', 'speed', 'endChapterPause'];
 
 function createWindow() {
   mainWindow = new BrowserWindow({
