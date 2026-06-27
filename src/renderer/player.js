@@ -16,6 +16,7 @@ const Cursor = (typeof require !== 'undefined') ? require('./reading-cursor') : 
 function createPlayer(deps) {
   const { doc, synth, makeClip, view } = deps;
   const prefetchAhead = deps.prefetchAhead ?? 2;
+  const onStateChange = deps.onStateChange || (() => {}); // optional: notify UI when `playing` flips
 
   let addr = null;            // current sentence address
   let playing = false;
@@ -54,9 +55,17 @@ function createPlayer(deps) {
   function onEnded(my) {
     if (my !== token || !playing) return; // stale end (paused/seeked) — ignore
     const next = Cursor.nextAddress(doc, addr);
-    if (!next) { playing = false; activeClip = null; return; } // end of book
+    if (!next) { setPlaying(false); activeClip = null; return; } // end of book
     addr = next;
     playCurrent();
+  }
+
+  // Flip `playing` and notify the UI only on an actual transition, so #play-pause
+  // always reflects state (e.g. it auto-stops at book end in onEnded).
+  function setPlaying(v) {
+    if (playing === v) return;
+    playing = v;
+    onStateChange(v);
   }
 
   function stopInternal() {
@@ -69,11 +78,11 @@ function createPlayer(deps) {
     if (playing) return;
     if (!addr) addr = Cursor.firstAddress(doc);
     if (!addr) return;
-    playing = true;
+    setPlaying(true);
     await playCurrent();
   }
 
-  function pause() { playing = false; stopInternal(); }
+  function pause() { setPlaying(false); stopInternal(); }
 
   async function seekTo(a) {
     if (!a) return;
@@ -95,7 +104,7 @@ function createPlayer(deps) {
       while (n && n.si !== 0) n = Cursor.nextAddress(doc, n);
       return seekTo(n || addr);
     },
-    jumpTo: (a) => { playing = true; return seekTo(a); }, // clicking a sentence starts playback there
+    jumpTo: (a) => { setPlaying(true); return seekTo(a); }, // clicking a sentence starts playback there
     isPlaying: () => playing,
     current: () => addr,
   };

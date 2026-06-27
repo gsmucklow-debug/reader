@@ -75,6 +75,7 @@ function showDocument(doc, fileName) {
     makeClip,
     view: ReaderView,
     prefetchAhead: 2,
+    onStateChange: updatePlayButton, // keep #play-pause in sync (esp. auto-stop at book end)
   });
   updatePlayButton();
 }

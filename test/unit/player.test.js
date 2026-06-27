@@ -115,4 +115,16 @@ test('stale clip-end after seek does not advance past the seek target (pins toke
   // (Deleting the `my !== token` clause in onEnded makes this fail — that's the pin.)
 });
 
+test('onStateChange fires when the book reaches its end and playback stops', async () => {
+  const { deps, endCurrent } = fakeDeps();
+  const states = []; // every `playing` transition the player reports
+  const p = createPlayer({ ...deps, onStateChange: (v) => states.push(v) });
+  await p.play(); await tick();
+  assert.deepStrictEqual(states, [true]); // started playing
+  for (let i = 0; i < 4; i++) { endCurrent(); await tick(); } // roll to the last sentence's end
+  assert.strictEqual(p.isPlaying(), false);
+  assert.strictEqual(states[states.length - 1], false); // auto-stop at book end notified the UI
+  assert.deepStrictEqual(states, [true, false]);
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
