@@ -82,4 +82,37 @@ test('pause stops the current clip and play does not double-advance', async () =
   assert.strictEqual(shown[shown.length - 1], '0.0.0');
 });
 
+// Captures every PLAYED clip and, unlike fakeDeps, its stop() does NOT clear the
+// ended callback — mirroring real Web Audio, where stop() fires onended. This lets
+// us fire a STALE clip's end after a seek while playback is still going, isolating
+// the `my !== token` half of the guard (the `!playing` half can't catch it here).
+function captureDeps() {
+  const shown = [];
+  const played = []; // one entry per clip that had .play() called, with fireEnded()
+  const deps = {
+    doc,
+    synth: async () => ({ wav: new Uint8Array(1), sampleRate: 24000 }),
+    makeClip: async () => {
+      let ended = null;
+      return {
+        play: (onEnded) => { ended = onEnded; played.push({ fireEnded: () => ended && ended() }); },
+        stop: () => { /* deliberately keep `ended` — real stop() fires onended */ },
+      };
+    },
+    view: { show: (a) => shown.push(`${a.ci}.${a.pi}.${a.si}`) },
+  };
+  return { deps, shown, played };
+}
+
+test('stale clip-end after seek does not advance past the seek target (pins token guard)', async () => {
+  const { deps, shown, played } = captureDeps();
+  const p = createPlayer({ ...deps, prefetchAhead: 0 });
+  await p.play(); await tick();             // 0.0.0 active (played[0]), still playing
+  await p.forwardSentence(); await tick();  // seek → 0.0.1 (played[1]), still playing
+  played[0].fireEnded(); await tick();      // stale end from the PRE-seek clip
+  assert.strictEqual(shown[shown.length - 1], '0.0.1'); // must NOT advance to 0.1.0
+  assert.strictEqual(p.isPlaying(), true);
+  // (Deleting the `my !== token` clause in onEnded makes this fail — that's the pin.)
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 0));

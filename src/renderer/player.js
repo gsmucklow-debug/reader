@@ -26,7 +26,9 @@ function createPlayer(deps) {
   function clipFor(a) {
     const k = Cursor.key(a);
     if (!clips.has(k)) {
-      clips.set(k, synth(Cursor.textAt(doc, a)).then((r) => makeClip(r.wav, r.sampleRate)));
+      const promise = synth(Cursor.textAt(doc, a)).then((r) => makeClip(r.wav, r.sampleRate));
+      promise.catch(() => clips.delete(k)); // swallow prefetch rejection; evict poison so retry works
+      clips.set(k, promise);
     }
     return clips.get(k);
   }
