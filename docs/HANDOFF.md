@@ -308,9 +308,19 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
      single/two-page mode.
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
-4. **Phase 3 — Library + auto-resume** (bookshelf with covers, drag-to-add, click-to-resume
-   from the exact sentence; **per-book voice/speed memory** becomes possible here — voice/speed/pause
-   are global today). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9).
+4. **Phase 3 — Library + auto-resume: brainstormed, designed & planned (2026-06-27); ready for a
+   builder.** Bookshelf home, drag/Add import, click-to-resume from the exact sentence. Docs:
+   [`plans/2026-06-27-phase-3-library-design.md`](./plans/2026-06-27-phase-3-library-design.md) (the
+   why/decisions) and [`plans/phase-3-library.md`](./plans/phase-3-library.md) (the TDD builder plan,
+   9 tasks). **Locked decisions:** copy-original + parsed-cache storage under `userData/library`;
+   **resume position is the only per-book state** (all comfort/voice stay global — per-book deferred);
+   **EPUB-only** with a title-card fallback cover (MD/DOCX + generic covers stay Phase 4); shelf is home
+   with the reader as a sub-view; **active vs derived-Finished** sections (`progress === lastAddress`);
+   reopening a finished book **restarts from the beginning**; clear per-book delete. Three robustness
+   requirements pinned in the plan (end-of-book persists `progress === lastAddress` beating the
+   debounce; re-add preserves progress; quit-flush via a **synchronous** IPC to dodge the Electron
+   teardown race). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9). **No GPU/voice
+   work.**
 5. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
