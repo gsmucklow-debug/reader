@@ -28,3 +28,21 @@ Once built it will be **`Reader-0.1.0-arm64.dmg`**:
 - **No narration yet** — the voice arrives in Phase 2.
 
 Markdown/DOCX, the library shelf, and the reading voice come in later phases.
+
+## Phase 2 — manual listen check
+
+The smoke test (`npm run smoke`) proves the narration *mechanism*: pressing Play
+synthesizes the first sentence through the real engine, highlights it, and the
+highlight advances to the next sentence on clip end. But Playwright can't *hear*
+audio, so voice quality and sync must be judged by ear.
+
+Drag in each of the 7 EPUBs (the 3 bundled Gutenberg fixtures + your 4 commercial
+books), press Play, and confirm by listening:
+
+- [ ] Voice is clear and warm (Kokoro `af_heart`); no garbled audio.
+- [ ] Highlight matches the spoken sentence — no drift; they advance together.
+- [ ] Scroll mode holds the reading line ~¾ up; paged modes flip with the reading.
+- [ ] Back-a-sentence / back-a-paragraph / forward-a-sentence work and resume cleanly.
+- [ ] Reading crosses chapter boundaries without stalling.
+- [ ] Second play of the same passage is instant (on-disk clip cache hit).
+- [ ] **Offline** works in the packaged `.exe` with the network off (adapter off).

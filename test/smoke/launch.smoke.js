@@ -223,6 +223,34 @@ async function dropBook(win) {
   });
   assert.ok(seam, 'highlightSentence(0,0,0) should find a span in the current chapter');
 
+  // 7b. Phase 2 — narration engages and ADVANCES through the REAL engine.
+  //     Manual-listen checklist (voice quality, sync by ear, offline-in-exe) lives
+  //     in HOW-TO-RUN.md — Playwright can't hear audio, so this asserts the DOM
+  //     mechanism only: press Play → real IPC → utilityProcess → decode → play →
+  //     .is-reading lands on the first sentence → clip ends → highlight advances.
+  //     Long timeouts: the first clip includes Kokoro model warm-up.
+  await win.click('#play-pause');
+  await win.waitForSelector('.sentence.is-reading', { timeout: 60000 }); // first clip is slow (model warm-up)
+  const firstReading = await win.evaluate(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}`;
+  });
+  // Highlight must move to a DIFFERENT sentence — proves clip-ended → advance
+  // through the real engine, not just a one-shot highlight of the first sentence.
+  await win.waitForFunction((prev) => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el && `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` !== prev;
+  }, firstReading, { timeout: 120000 });
+  const secondReading = await win.evaluate(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
+  });
+  await win.click('#play-pause'); // pause so narration doesn't run on into the settings test
+  assert.ok(secondReading && secondReading !== firstReading,
+    `highlight should advance off the first sentence (${firstReading} -> ${secondReading})`);
+  console.log('  ✓ narration highlight engaged and advanced', `(${firstReading} -> ${secondReading})`);
+  await win.screenshot({ path: path.join(SHOTS, '4-narrating.png') });
+
   // 8. AC#6 — set ALL comfort prefs to NON-DEFAULT values, then prove every one
   //    survives a restart (defaults would pass a weaker test trivially).
   await win.click('#theme-toggle button[data-theme="dark"]');
@@ -263,6 +291,7 @@ async function dropBook(win) {
 
   console.log('SMOKE OK:', JSON.stringify(stats),
     '| flip', JSON.stringify({ before: before.orient, fwd: afterFwd.orient }),
+    '| narration', JSON.stringify({ first: firstReading, advanced: secondReading }),
     '| font', JSON.stringify(fontState.loaded),
     '| persisted', JSON.stringify(persisted));
 })().catch((err) => {
