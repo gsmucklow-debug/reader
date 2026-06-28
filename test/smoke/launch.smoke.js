@@ -49,12 +49,29 @@ async function dropBook(win) {
   let win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  // 1. Window opens to the calm empty state.
+  // Capture renderer console errors to surface them in smoke output.
+  win.on('console', (msg) => {
+    if (msg.type() === 'error') console.error('  [renderer]', msg.text());
+  });
+
+  // 1. App opens to the library home screen (Phase 3). On first run, no books yet.
   assert.strictEqual(await win.title(), 'Reader');
-  assert.ok(await win.isVisible('#empty-state'), 'empty state should show on launch');
+  // showLibrary() renders the empty state immediately (no IPC wait), so the card
+  // appears almost at once. waitForFunction checks the JS attribute, not CSS visibility.
+  // showLibrary() renders the empty state immediately (no IPC wait), so the card
+  // appears almost at once. waitForFunction checks the JS attribute, not CSS visibility.
+  await win.waitForFunction(() => {
+    const el = document.getElementById('library-empty');
+    return el && !el.hidden;
+  }, null, { timeout: 5000 });
+  assert.ok(
+    await win.evaluate(() => document.body.dataset.screen === 'library'),
+    'app should open to the library screen'
+  );
   await win.screenshot({ path: path.join(SHOTS, '1-empty.png') });
 
-  // 2. Real drag-and-drop path renders addressable spans (Phase 1 contract).
+  // 2. Real drag-and-drop path adds the book to the library and opens the reader.
+  //    Now routes through addAndOpen → libraryAdd → openFromLibrary → showDocument.
   await dropBook(win);
   const stats = await win.evaluate(() => ({
     title: document.title,
@@ -62,11 +79,11 @@ async function dropBook(win) {
     firstHasIndices: !!document.querySelector(
       'span.sentence[data-chapter="0"][data-paragraph="0"][data-sentence="0"]'
     ),
-    emptyHidden: document.getElementById('empty-state').hidden,
     viewportVisible: !document.getElementById('reading-viewport').hidden,
+    screen: document.body.dataset.screen,
   }));
   assert.ok(stats.viewportVisible, 'drop should reveal the reading viewport');
-  assert.ok(stats.emptyHidden, 'drop should hide the empty state');
+  assert.strictEqual(stats.screen, 'reader', 'drop should switch to the reader screen');
   assert.ok(stats.title.includes('Alice'), `document.title was "${stats.title}"`);
   // Only the CURRENT chapter is mounted now (Phase 1.5), so the count is per-chapter.
   assert.ok(stats.spans > 0, `expected sentence spans in chapter 1, got ${stats.spans}`);
@@ -331,13 +348,131 @@ async function dropBook(win) {
   assert.ok(has(previewFile), `▶ preview should synthesize an af_bella clip on disk (${previewFile})`);
   console.log('  ✓ ▶ preview synthesized an af_bella sample through the real engine');
 
-  // Ensure narration is paused before the settings test (preview already ducked it,
-  // but pause defensively if anything is still playing).
+  // Ensure narration is paused before the library loop test.
   await win.evaluate(() => {
     const b = document.getElementById('play-pause');
     if (b.getAttribute('aria-label') === 'Pause') b.click();
   });
+  await win.waitForTimeout(2000); // let the 1.5s debounce + async write settle before going to library
   await win.screenshot({ path: path.join(SHOTS, '4-narrating.png') });
+
+  // --- Phase 3: Library loop -----------------------------------------------
+  // 7e. Click ← Library → shelf shows with the alice tile in the active section.
+  await win.click('#library-btn');
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  const shelfAfterPause = await win.evaluate(() => ({
+    screen: document.body.dataset.screen,
+    activeTiles: document.querySelectorAll('#shelf-active .book-tile').length,
+    finishedTiles: document.querySelectorAll('#shelf-finished .book-tile').length,
+    activeHidden: document.getElementById('active-title').hidden,
+  }));
+  assert.strictEqual(shelfAfterPause.screen, 'library', 'Library button should return to the shelf');
+  assert.ok(shelfAfterPause.activeTiles >= 1, 'alice should appear on the active shelf');
+  assert.strictEqual(shelfAfterPause.finishedTiles, 0, 'not finished yet');
+  assert.ok(!shelfAfterPause.activeHidden, 'Reading section header should be visible');
+  console.log('  ✓ ← Library returned to shelf; alice tile visible in active section');
+
+  // 7f. Click the alice tile → reader reopens at the ADVANCED sentence (auto-resume).
+  //     The saved progress is the address from 7b (highlight advanced past 0.0.0).
+  await win.click('#shelf-active .book-tile:first-child');
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+  await win.waitForSelector('.sentence.is-reading', { timeout: 10000 });
+  const resumeAddr = await win.evaluate(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
+  });
+  assert.ok(resumeAddr !== null, 'a sentence should be highlighted on resume');
+  assert.notStrictEqual(resumeAddr, '0.0.0', `resume should be past the start; got ${resumeAddr}`);
+  console.log('  ✓ tile re-opened at resumed sentence:', resumeAddr, '(not 0.0.0)');
+
+  // Resume-page accuracy check: the .is-reading span must be visible in the viewport
+  // (the page flip landed correctly). Check in the current (single/two-page) mode.
+  await win.waitForTimeout(500); // allow document.fonts.ready re-flip to settle
+  const pageCheck = await win.evaluate(() => {
+    const span = document.querySelector('.sentence.is-reading');
+    if (!span) return { ok: false, reason: 'no is-reading span' };
+    const vp = document.getElementById('reading-viewport');
+    const vpR = vp.getBoundingClientRect();
+    const sR = span.getBoundingClientRect();
+    const visible = sR.width > 0 && sR.height > 0 && sR.top >= vpR.top - 10 && sR.bottom <= vpR.bottom + 10;
+    return { ok: visible, view: document.body.dataset.view, addr: `${span.dataset.chapter}.${span.dataset.paragraph}.${span.dataset.sentence}` };
+  });
+  assert.ok(pageCheck.ok, `resumed span should be in viewport (correct page flip); view=${pageCheck.view} addr=${pageCheck.addr}`);
+  console.log('  ✓ resumed span is visible in viewport (page flip correct)');
+
+  // 7g. Remove the book (the × button, confirm the dialog), shelf becomes empty.
+  // Back to library first.
+  await win.click('#library-btn');
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  // Wait for the shelf to populate (showLibrary does an empty render first, then IPC).
+  await win.waitForSelector('#shelf-active .book-tile', { timeout: 10000 });
+  win.on('dialog', (d) => d.accept()); // auto-confirm the "Remove?" dialog
+  await win.click('#shelf-active .tile-remove');
+  await win.waitForTimeout(600); // let the remove + re-render settle
+  const shelfAfterRemove = await win.evaluate(() => ({
+    tiles: document.querySelectorAll('.book-tile').length,
+    emptyShown: !document.getElementById('library-empty').hidden,
+  }));
+  assert.strictEqual(shelfAfterRemove.tiles, 0, 'shelf should be empty after removing alice');
+  assert.ok(shelfAfterRemove.emptyShown, '#library-empty should reappear when no books remain');
+  console.log('  ✓ book removed; shelf empty; library-empty visible');
+
+  // 7h. Re-add alice; force the book to finished via IPC; shelf moves it to Finished.
+  await dropBook(win);               // re-adds alice and opens reader (same library path)
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+  // Grab the book id and lastAddress from the current player/doc state.
+  const bookMeta = await win.evaluate(async () => {
+    const { active } = await window.reader.libraryShelf();
+    const rec = active[0];
+    if (!rec) return null;
+    // Force progress = lastAddress so the book reads as finished.
+    await window.reader.libraryUpdateProgress(rec.id, rec.lastAddress);
+    return { id: rec.id, lastAddress: rec.lastAddress };
+  });
+  assert.ok(bookMeta, 'alice should be in the active shelf after re-add');
+  await win.waitForTimeout(400);
+
+  // Re-render the shelf; alice should now be in Finished.
+  await win.click('#library-btn');
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  // Wait for shelf to populate from IPC (empty-first pattern).
+  await win.waitForSelector('#shelf-finished .book-tile, #shelf-active .book-tile', { timeout: 10000 });
+  const shelfFinished = await win.evaluate(() => ({
+    activeTiles: document.querySelectorAll('#shelf-active .book-tile').length,
+    finishedTiles: document.querySelectorAll('#shelf-finished .book-tile').length,
+  }));
+  assert.strictEqual(shelfFinished.activeTiles, 0, 'finished book should leave the active shelf');
+  assert.strictEqual(shelfFinished.finishedTiles, 1, 'finished book should appear in the Finished section');
+  console.log('  ✓ finished book moved to Finished section');
+
+  // 7i. Opening a finished book resets progress → it returns to active shelf.
+  await win.waitForSelector('#shelf-finished .book-tile', { timeout: 10000 });
+  await win.click('#shelf-finished .book-tile:first-child');
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+  await win.waitForSelector('.sentence.is-reading', { timeout: 10000 });
+  const restartAddr = await win.evaluate(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
+  });
+  assert.strictEqual(restartAddr, '0.0.0', `reopening a finished book should start at 0.0.0, got ${restartAddr}`);
+  console.log('  ✓ reopening finished book restarted from 0.0.0');
+  // Back to library to verify it's back in active.
+  await win.click('#library-btn');
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  // Wait for shelf to populate from IPC (empty-first pattern).
+  await win.waitForSelector('#shelf-active .book-tile', { timeout: 10000 });
+  const shelfAfterReopen = await win.evaluate(() => ({
+    activeTiles: document.querySelectorAll('#shelf-active .book-tile').length,
+    finishedTiles: document.querySelectorAll('#shelf-finished .book-tile').length,
+  }));
+  assert.strictEqual(shelfAfterReopen.activeTiles, 1, 'reopened finished book should be back in active shelf');
+  assert.strictEqual(shelfAfterReopen.finishedTiles, 0, 'Finished section should be empty again');
+  console.log('  ✓ reopened finished book is back in active shelf');
+
+  // Re-open to reader for the rest of the test (settings persistence section 8 needs the reader).
+  await win.click('#shelf-active .book-tile:first-child');
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+  // ---- End of Phase 3 library loop ----------------------------------------
 
   // 8. AC#6 — set ALL comfort prefs to NON-DEFAULT values, then prove every one
   //    survives a restart (defaults would pass a weaker test trivially).
@@ -373,7 +508,21 @@ async function dropBook(win) {
   app = await launch();
   win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  await win.waitForTimeout(300); // settings load is async on boot
+  // Library persistence: app opens to the library and the book is still there (Phase 3 step 9).
+  // showLibrary() renders empty first, then populates after IPC — wait for the tile.
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  await win.waitForSelector('.book-tile', { timeout: 10000 });
+  const libraryPersisted = await win.evaluate(() => ({
+    screen: document.body.dataset.screen,
+    tileCount: document.querySelectorAll('.book-tile').length,
+  }));
+  assert.strictEqual(libraryPersisted.screen, 'library', 'app should open to library after restart');
+  assert.ok(libraryPersisted.tileCount > 0, 'book should persist on shelf across a restart');
+  console.log('  ✓ library persists across restart:', libraryPersisted.tileCount, 'tile(s)');
+  // Re-open the book so we can check the persisted comfort settings below.
+  await win.click('.book-tile:first-child');
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+  await win.waitForTimeout(300);
   const persisted = await win.evaluate(() => ({
     theme: document.body.dataset.theme,
     view: document.body.dataset.view,
