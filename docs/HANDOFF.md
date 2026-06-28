@@ -433,13 +433,24 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:49** (packaged `app.js` confirmed to carry all
    22 ids) — replace old copies. *(US male is only 3 voices — an inherent Kokoro limit, recorded in the
    design.)*
-8. **▶ NEXT: plan the next phase (fresh chat).** Windows feature set through Phase 4 (part 1) is built,
-   verified & merged. Candidates to scope/brainstorm next (all on Windows; **macOS still deferred until
-   the Windows version is finished**): **(a)** the **dtype follow-up** (item below — HIGH VALUE latency
-   win, plan ready, gated on an M5 measurement); **(b) Phase 4 (part 2)** — **DOCX** reading and/or
-   **pronunciation overrides** (both logged Phase 4 items); **(c)** app **rename** (open question below);
-   **(d)** an NSIS installer if the launch trim wasn't enough. Start the fresh session by reading this
-   HANDOFF, then `superpowers:brainstorming` the chosen direction before any plan.
+8. **▶ NEXT: Phase 4 (part 2) — DOCX reading: brainstormed, designed & planned (2026-06-28); READY
+   FOR A BUILDER, not built.** User chose DOCX as the next direction. Brainstormed + scoped with the
+   user; two docs written:
+   - [`plans/2026-06-28-docx-reading-design.md`](./plans/2026-06-28-docx-reading-design.md) — the
+     decisions/why. **mammoth** (pure-JS) converts `.docx`→HTML, Word Heading 1–6 styles → `<h1–h6>`;
+     reuse `htmlToBlocks`; **extract a shared `blocksToChapters` helper** from `markdown.js` that both
+     parsers call; no cover → title-card; no reader/IPC/library changes (same `Document` shape, so
+     resume/finished/remove/persist come free). `.docx` only (not legacy `.doc`); `core.xml` title
+     deferred.
+   - [`plans/phase-4-docx.md`](./plans/phase-4-docx.md) — the builder plan (8 tasks, TDD): add mammoth;
+     extract+refactor `blocksToChapters` (Markdown tests are the regression net); a generated
+     `sample.docx` fixture (script self-checks mammoth emits `<h1>`); `parseDocx`; dispatcher route;
+     picker/copy; smoke line; package gate. Baseline **103 tests**; target ~113. **Hand to a fresh
+     builder (Sonnet 4.6) on branch `phase-4-docx`.**
+   - **Other still-open candidates** (all Windows; macOS still deferred): the **dtype follow-up** (HIGH
+     VALUE latency win, plan ready, gated on an M5 measurement); **pronunciation overrides** (the other
+     logged Phase 4 item); app **rename** (open question below); an NSIS installer if the launch trim
+     wasn't enough.
 9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
