@@ -69,6 +69,8 @@ function isNonBoundaryDot(text, dotPos) {
  */
 function splitSentences(text) {
   if (!text || !text.trim()) return [];
+  // Normalize symbols that TTS reads wrong: #4 -> "number 4"
+  text = text.replace(/#(\d)/g, 'number $1');
 
   const sentences = [];
   let start = 0;

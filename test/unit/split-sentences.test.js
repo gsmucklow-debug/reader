@@ -109,3 +109,14 @@ test('collapses internal whitespace/newlines within a sentence', () => {
     ['A line broken over rows.', 'Next one.']
   );
 });
+
+test('normalizes # before a digit to "number" for TTS', () => {
+  assert.deepStrictEqual(
+    splitSentences('Whispers From the Electric Veil #4'),
+    ['Whispers From the Electric Veil number 4']
+  );
+  assert.deepStrictEqual(
+    splitSentences('See issue #12 and pull request #3.'),
+    ['See issue number 12 and pull request number 3.']
+  );
+});
