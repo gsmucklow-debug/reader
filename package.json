@@ -32,7 +32,11 @@
       "!assets/models/**/*",
       "package.json",
       "!test/**/*",
-      "!docs/**/*"
+      "!docs/**/*",
+      "!**/node_modules/onnxruntime-node/bin/napi-v3/linux/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v3/**/DirectML.dll"
     ],
     "asarUnpack": [
       "**/node_modules/onnxruntime-node/**"
@@ -45,7 +49,10 @@
     ],
     "win": {
       "target": "portable",
-      "artifactName": "Reader-${version}-portable.exe"
+      "artifactName": "Reader-${version}-portable.exe",
+      "files": [
+        "!**/node_modules/onnxruntime-node/bin/napi-v3/darwin/**"
+      ]
     },
     "mac": {
       "target": [
@@ -54,7 +61,10 @@
           "arch": "arm64"
         }
       ],
-      "category": "public.app-category.books"
+      "category": "public.app-category.books",
+      "files": [
+        "!**/node_modules/onnxruntime-node/bin/napi-v3/win32/**"
+      ]
     },
     "directories": {
       "output": "dist"

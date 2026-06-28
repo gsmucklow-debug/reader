@@ -568,6 +568,22 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   blob isn't also shipped inside the asar). Don't remove either.
 - **`onnxruntime-node`'s `.node` must be `asarUnpack`ed** (`**/node_modules/onnxruntime-node/**`) —
   a native binary can't load from inside an asar. Made explicit (don't rely on auto-detect).
+- **`onnxruntime-node` ships ALL platforms' binaries (~208 MB under `bin/napi-v3/`) — we trim to the
+  target only (2026-06-28).** It bundles linux + darwin + win32 (x64 **and** arm64), each with the big
+  `onnxruntime` lib, plus an 18 MB `DirectML.dll` per Windows arch. On a Win-x64 launch ~190 MB of that
+  never runs. `package.json` `files` now excludes the dead set: `linux/**`, `win32/arm64/**`,
+  `darwin/x64/**`, and **all `DirectML.dll`** (GPU is the spike-proven dead backend, CPU-only) at the top
+  level, plus **platform-scoped** `win.files` drops `darwin/**` and `mac.files` drops `win32/**`. Result:
+  **`app.asar.unpacked` 231 MB → 39 MB** — ~192 MB less to extract/Defender-scan on every cold launch of
+  the portable `.exe`. **Verified:** rebuilt + `node test/manual/verify-packaged.js` → offline synth
+  still `201644 bytes @ 24000 Hz` (win32/x64 `onnxruntime.dll` loads fine with DirectML absent). The
+  platform-scoped `files` **merge** with the top-level list (don't replace) — confirmed src intact in the
+  asar. **Don't widen these excludes to the asar JS deps** (`onnxruntime-web` 91 MB / `typescript` 23 MB /
+  `@img`/sharp 20 MB are dead weight too, BUT `onnxruntime-web` is a **static `import`** in transformers'
+  `backends/onnx.js` — removing it breaks the engine; left alone deliberately). **Launch root cause not
+  fully fixed:** the `portable` target still re-extracts on every cold launch; the trim only makes each
+  extraction lighter. The structural fix (deferred by user 2026-06-28) is switching `portable` → an
+  **NSIS installer** (extract once at install) — revisit if launch still feels slow.
 - **utilityProcess WAV transfer:** send the bytes **in the message body** (`postMessage({…, wav})`),
   **not** in a transfer list — Electron's utilityProcess uses structured clone; a `[wav.buffer]`
   transfer-list arg makes `msg.wav` arrive `undefined`. (This bit us; the plan's first draft had it.)
