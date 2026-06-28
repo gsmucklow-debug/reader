@@ -123,7 +123,10 @@ input[type="range"] { accent-color: var(--accent); }
 
 /* Voice picker: rows of a name + a small ▶ preview, grouped by quiet US/UK headers. */
 .setting-voice { align-items: flex-start; }
-.voice-list { display: flex; flex-direction: column; gap: 4px; max-width: 280px; }
+.voice-list {
+  display: flex; flex-direction: column; gap: 4px; max-width: 280px;
+  max-height: 50vh; overflow-y: auto; overflow-x: hidden; padding-right: 4px;
+}
 .voice-group {
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -140,6 +143,7 @@ input[type="range"] { accent-color: var(--accent); }
   line-height: 1.2;
   color: var(--ink);
 }
+.voice-pick.voice-top { font-weight: 600; }
 .voice-pick.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .voice-preview { flex: 0 0 auto; padding: 6px 10px; font-size: 0.85rem; color: var(--ink); }
 

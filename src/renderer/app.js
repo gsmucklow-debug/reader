@@ -559,18 +559,41 @@ async function applyFont(family, fallback) {
 // --- Voice picker + reading speed + end-of-chapter pause -------------------
 // Curated best English voices, grouped US/UK × male/female. Every `id` is verified
 // present in the installed kokoro-js voices (28 total; these are the standouts).
+// Curated English (US/UK) voices, best-first within each group. `top: true` marks
+// the A/B-grade standouts with a ★ in the picker. Grades are Kokoro's (VOICES.md);
+// every id must exist in node_modules/kokoro-js/voices/*.bin (asserted in a test).
+// D/F-grade voices are deliberately excluded. All 54 voices ship bundled — adding a
+// row is the whole cost (cache/preview/persistence are already per-voice).
 const VOICES = [
-  { group: 'US', items: [
-    { id: 'af_heart',    label: 'Heart — US, female' },
-    { id: 'af_bella',    label: 'Bella — US, female' },
-    { id: 'am_michael',  label: 'Michael — US, male' },
-    { id: 'am_fenrir',   label: 'Fenrir — US, male' },
+  { group: 'US · Female', items: [
+    { id: 'af_heart',    label: 'Heart',    top: true },
+    { id: 'af_bella',    label: 'Bella',    top: true },
+    { id: 'af_nicole',   label: 'Nicole',   top: true },
+    { id: 'af_aoede',    label: 'Aoede' },
+    { id: 'af_kore',     label: 'Kore' },
+    { id: 'af_sarah',    label: 'Sarah' },
+    { id: 'af_nova',     label: 'Nova' },
+    { id: 'af_alloy',    label: 'Alloy' },
+    { id: 'af_jessica',  label: 'Jessica' },
+    { id: 'af_river',    label: 'River' },
+    { id: 'af_sky',      label: 'Sky' },
   ] },
-  { group: 'UK', items: [
-    { id: 'bf_emma',     label: 'Emma — UK, female' },
-    { id: 'bf_isabella', label: 'Isabella — UK, female' },
-    { id: 'bm_george',   label: 'George — UK, male' },
-    { id: 'bm_fable',    label: 'Fable — UK, male' },
+  { group: 'US · Male', items: [
+    { id: 'am_michael',  label: 'Michael' },
+    { id: 'am_fenrir',   label: 'Fenrir' },
+    { id: 'am_puck',     label: 'Puck' },
+  ] },
+  { group: 'UK · Female', items: [
+    { id: 'bf_emma',     label: 'Emma',     top: true },
+    { id: 'bf_isabella', label: 'Isabella' },
+    { id: 'bf_alice',    label: 'Alice' },
+    { id: 'bf_lily',     label: 'Lily' },
+  ] },
+  { group: 'UK · Male', items: [
+    { id: 'bm_george',   label: 'George' },
+    { id: 'bm_fable',    label: 'Fable' },
+    { id: 'bm_lewis',    label: 'Lewis' },
+    { id: 'bm_daniel',   label: 'Daniel' },
   ] },
 ];
 const SAMPLE_TEXT = 'The quick brown fox jumps over the lazy dog.';
@@ -586,17 +609,20 @@ function buildVoiceList() {
     for (const v of grp.items) {
       const row = document.createElement('div');
       row.className = 'voice-row';
+      const fullLabel = `${v.label} — ${grp.group}`; // accent/gender for screen readers
       const pick = document.createElement('button');
       pick.type = 'button';
       pick.className = 'voice-pick';
       pick.dataset.voice = v.id;
-      pick.textContent = v.label;
+      if (v.top) pick.classList.add('voice-top');
+      pick.textContent = v.top ? `★ ${v.label}` : v.label;
+      pick.setAttribute('aria-label', v.top ? `${fullLabel} (recommended)` : fullLabel);
       pick.addEventListener('click', () => { setVoice(v.id); markActiveVoice(); });
       const prev = document.createElement('button');
       prev.type = 'button';
       prev.className = 'voice-preview';
       prev.title = 'Preview';
-      prev.setAttribute('aria-label', `Preview ${v.label}`);
+      prev.setAttribute('aria-label', `Preview ${fullLabel}`);
       prev.textContent = '▶';
       prev.addEventListener('click', (e) => { e.stopPropagation(); previewVoice(v.id); });
       row.append(pick, prev);
