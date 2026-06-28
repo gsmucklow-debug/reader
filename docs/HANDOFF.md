@@ -357,15 +357,27 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
      single/two-page mode.
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
-4. **✅ Phase 3 — Library + auto-resume: BUILT & planner-verified (2026-06-28; see "What's done").**
-   Branch `phase-3-library`, 82/82 unit + 12 smoke green, package gate passed. **Two user actions left:**
-   (a) **listen/by-eye confirm** — **Add button + real cover extraction confirmed working by the user
-   (2026-06-28)** on their own EPUBs (Dragonflight, Recursion). Still worth a pass on: click-to-resume
-   lands on the right sentence *and page*, a finished book moves to **Finished** then restarts on reopen,
-   remove works, and progress survives a quit+relaunch; (b) **decide the merge** — the branch is verified
-   but **not merged to `main`**; merge when you're happy with the listen-test (and ideally after the other
-   Windows gates below).
-5. **Only after the Windows version is finished: the macOS build** (deferred by user decision
+4. **✅ Phase 3 — Library + auto-resume: BUILT, planner-verified & MERGED to `master`
+   (2026-06-28; see "What's done").** 82/82 unit + 12 smoke green, package gate passed; merged via clean
+   fast-forward and `phase-3-library` deleted (82/82 re-verified on the merged `master`). **Remaining
+   user action:** a listen/by-eye confirm — **Add button + real cover extraction already confirmed by the
+   user** on their own EPUBs (Dragonflight, Recursion). Still worth a pass on: click-to-resume lands on
+   the right sentence *and page*, a finished book moves to **Finished** then restarts on reopen, remove
+   works, and progress survives a quit+relaunch. (The shipped `dist/Reader-0.1.0-portable.exe` from
+   2026-06-28 13:52 already contains the merged code.)
+5. **🔨 Phase 4 (part 1) — Markdown reading: brainstormed, designed, planned; BUILDER WORKING NOW
+   (2026-06-28).** Lets the user add their own `.md`/`.markdown` drafts to the library and listen, with
+   the same chapters/headings/highlight/resume as EPUB. Docs:
+   [`plans/2026-06-28-phase-4-markdown-design.md`](./plans/2026-06-28-phase-4-markdown-design.md) (the
+   why/decisions) and [`plans/phase-4-markdown.md`](./plans/phase-4-markdown.md) (the TDD builder plan, 8
+   tasks). **Locked scope (narrowed during brainstorming):** **Markdown only** (DOCX deferred); **no new
+   cover code** (the Phase 3 title-card fallback covers `.md`, so "generic covers" is dropped — YAGNI);
+   **no reader/IPC/`document.json` changes** — `parseMarkdown` reuses the EPUB `marked`→HTML→`htmlToBlocks`
+   path + the Phase 2.6 `{heading?, sentences}` model, with one new top-most-heading chapter-split step,
+   routed via a tiny `src/parse/index.js` dispatcher. Resume/finished/remove/persist come free (same
+   `Document` shape). Builder: **Sonnet 4.6, medium**; planner (Opus) verifies the report here when it
+   lands. **No GPU/voice work.** *(Still-deferred Phase 4 item: pronunciation overrides.)*
+6. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
    `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
@@ -375,7 +387,9 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 > **Carry into Phase 3 (deferred items, by design):** per-book reading-position resume and **per-book
 > voice/speed memory** (the clip cache is global/content-addressed today, now keyed by voice+speed —
 > Phase 3 may add per-book folders); the in-memory clip cache cap is **48** (`player.js` `maxClips`,
-> raised from 24 by the spike's Part B) — fine, revisit if needed. **Phase 4** owns: **pronunciation overrides** and **Markdown/DOCX**.
+> raised from 24 by the spike's Part B) — fine, revisit if needed. **Phase 4** is now being split:
+> **part 1 = Markdown reading (builder working now)**; still owned/deferred under Phase 4 are
+> **pronunciation overrides** and **DOCX**.
 > (Voice-picker UI, reading-speed, and end-of-chapter pause were pulled forward into Phase 2.5 — done.
 > The user's *selection* now flows from `state.voice`; but the **default-fallback literal `'af_heart'`
 > still appears in ~4 files** (`clip-cache.js`, `tts-service.js`, `main.js`, `app.js`) as defensive
