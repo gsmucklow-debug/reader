@@ -27,20 +27,24 @@ function launch() {
   return electron.launch({ args: [ROOT, `--user-data-dir=${USERDATA}`], env });
 }
 
-async function dropBook(win) {
-  const b64 = fs.readFileSync(FIXTURE).toString('base64');
-  await win.evaluate((b64) => {
+async function dropFile(win, fixturePath, fileName, mime) {
+  const b64 = fs.readFileSync(fixturePath).toString('base64');
+  await win.evaluate(({ b64, fileName, mime }) => {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const file = new File([bytes], 'alice.epub', { type: 'application/epub+zip' });
+    const file = new File([bytes], fileName, { type: mime });
     const dt = new DataTransfer();
     dt.items.add(file);
     window.dispatchEvent(
       new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })
     );
-  }, b64);
+  }, { b64, fileName, mime });
   await win.waitForSelector('#reading span.sentence', { timeout: 20000 });
+}
+
+async function dropBook(win) {
+  return dropFile(win, FIXTURE, 'alice.epub', 'application/epub+zip');
 }
 
 (async () => {
@@ -545,6 +549,44 @@ async function dropBook(win) {
   assert.strictEqual(persisted.speed, '1.25', 'reading speed should persist across restart');
   assert.strictEqual(persisted.speedLabel, '1.25×', 'speed label should reflect persisted value');
   assert.strictEqual(persisted.pause, 'longer', 'end-of-chapter pause should persist across restart');
+
+  // --- Phase 4: Markdown reading -------------------------------------------
+  await win.click('#library-btn');
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  await dropFile(
+    win, path.join(ROOT, 'test', 'fixtures', 'sample.md'), 'sample.md', 'text/markdown'
+  );
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+
+  // The first narratable span is the chapter heading itself (0.0.0).
+  const mdFirst = await win.evaluate(() => {
+    const el = document.querySelector('span.sentence');
+    return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
+  });
+  assert.strictEqual(mdFirst, '0.0.0', `markdown first span should be 0.0.0, got ${mdFirst}`);
+
+  // Narration advances through the REAL engine (same pattern as the EPUB check).
+  await win.evaluate(() => document.getElementById('play-pause').click());
+  await win.waitForFunction(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el && `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` !== '0.0.0';
+  }, null, { timeout: 30000 });
+  await win.evaluate(() => {
+    const b = document.getElementById('play-pause');
+    if (b.getAttribute('aria-label') === 'Pause') b.click();
+  });
+
+  // The tile uses a TITLE-CARD (no embedded cover), not an <img>.
+  await win.click('#library-btn');
+  await win.waitForSelector('#shelf-active .book-tile', { timeout: 10000 });
+  const mdTile = await win.evaluate(() => {
+    const tiles = [...document.querySelectorAll('#shelf-active .book-tile')];
+    const t = tiles.find((x) => (x.querySelector('.tile-title')?.textContent || '').includes('Sample'));
+    return t ? { card: !!t.querySelector('.cover.title-card'), img: !!t.querySelector('.cover img') } : null;
+  });
+  assert.ok(mdTile && mdTile.card && !mdTile.img, 'markdown book should show a title-card, not a cover');
+  console.log('  ✓ markdown (.md): title-card tile, opens, heading is 0.0.0, narration advances');
+
   await app.close();
 
   console.log('SMOKE OK:', JSON.stringify(stats),
