@@ -15,7 +15,8 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "jszip": "^3.10.1",
-    "kokoro-js": "^1.2.1"
+    "kokoro-js": "^1.2.1",
+    "marked": "^12.0.2"
   },
   "devDependencies": {
     "electron": "^33.0.0",
