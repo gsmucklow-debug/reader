@@ -79,3 +79,12 @@ test('splitShelf: active (unfinished) by lastOpened desc, finished separate', ()
 
 // helper: read one record back via list()
 async function getRec(lib, id) { return (await lib.list()).find(r => r.id === id); }
+
+test('add dispatches a .md file to the markdown parser and stores a null-cover record', async () => {
+  const lib = makeLibrary(tmpDir()); // real parseDocument/extractCover
+  const rec = await lib.add(Buffer.from('# Title\n\nHello world. Second one.'), 'note.md');
+  assert.equal(rec.title, 'Title');
+  assert.equal(rec.cover, null);                     // -> title card on the shelf
+  const opened = await lib.open(rec.id);
+  assert.equal(opened.doc.chapters[0].title, 'Title');
+});

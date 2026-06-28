@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const fssync = require('node:fs');
 const path = require('node:path');
-const { parseEpub, coverImage } = require('../parse/epub');
+const { parseDocument, extractCover } = require('../parse');
 const { lastAddress } = require('../renderer/reading-cursor'); // dual-mode require
 
 function eqAddr(a, b) {
@@ -26,8 +26,8 @@ function splitShelf(records) {
 
 // `deps` lets tests inject fakes: { parse(buffer)->doc, cover(buffer)->{bytes,ext}|null }
 function makeLibrary(base, deps = {}) {
-  const parse = deps.parse || parseEpub;
-  const cover = deps.cover || coverImage;
+  const parse = deps.parse || parseDocument;
+  const cover = deps.cover || extractCover;
   const indexPath = path.join(base, 'index.json');
   const bookDir = (id) => path.join(base, 'books', id);
 
@@ -53,13 +53,13 @@ function makeLibrary(base, deps = {}) {
       await writeIndex(idx);
       return existing;
     }
-    const doc = await parse(buffer);
+    const doc = await parse(buffer, fileName);
     const dir = bookDir(id);
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, 'original.epub'), buffer);
     await fs.writeFile(path.join(dir, 'document.json'), JSON.stringify(doc), 'utf8');
     let coverName = null;
-    const cov = await cover(buffer);
+    const cov = await cover(buffer, fileName);
     if (cov && cov.bytes && cov.bytes.length) {
       coverName = `cover.${cov.ext}`;
       await fs.writeFile(path.join(dir, coverName), Buffer.from(cov.bytes));
