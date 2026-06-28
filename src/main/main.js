@@ -6,6 +6,7 @@ const fssync = require('node:fs');
 const path = require('node:path');
 const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
+const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
 
 let library = null;
@@ -201,12 +202,13 @@ ipcMain.handle('pick-file-bytes', async () => {
 // structured-clones it across the renderer IPC boundary, so return it as-is.
 ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
   voice = voice || 'af_heart';
+  const normalized = normalizeTTS(text);
   clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
-  const hit = await clipCache.get(text, voice, speed);
+  const hit = await clipCache.get(normalized, voice, speed);
   if (hit) return { wav: hit, sampleRate: 24000 }; // Kokoro is fixed 24 kHz
-  const res = await ttsRequest({ type: 'synthesize', text, voice, speed });
+  const res = await ttsRequest({ type: 'synthesize', text: normalized, voice, speed });
   const bytes = res.wav;
-  await clipCache.put(text, voice, speed, bytes);
+  await clipCache.put(normalized, voice, speed, bytes);
   return { wav: bytes, sampleRate: res.sampleRate };
 });
 
