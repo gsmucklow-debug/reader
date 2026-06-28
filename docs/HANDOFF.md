@@ -268,6 +268,53 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     (touches the logged CPU/offline decision) — left alone.
   - Both fixes are **by-ear / by-eye in the end** — worth a quick confirm in the flagged passage, but
     the root causes are solid and pinned by tests. **Exe rebuilt with both fixes (today 18:16).**
+- [x] **Phase 3 — Library + auto-resume: built & planner-verified (2026-06-28, Windows; branch
+  `phase-3-library`).** Built by a fresh Sonnet 4.6 builder (7 feature commits, `ed730db` → `784cfbc`);
+  planning session **independently re-verified** — re-ran the suites here, read every diff, extracted the
+  packaged asar, **not taken on "looks good."** **The reader is now a library: a bookshelf home where you
+  add EPUBs, each remembered with its cover and the exact sentence you stopped on, reopening right there.**
+  - **What shipped:** `lastAddress()` (pure, for finished-detection); `coverImage()` + `parseOpf` `coverId`
+    (EPUB3 `properties=cover-image` + EPUB2 `<meta name=cover>`); **`src/main/library.js`** — JSON index +
+    per-book folders under `userData/library/books/<sha256>/` (copied original + `document.json` + cover),
+    **idempotent-by-hash preserving progress**, **reopen-finished-restarts** reset, derived active/finished
+    split (`progress === lastAddress`); library IPC (list/shelf/add/open/remove/updateProgress + **sync**
+    flush + coverDataUrl + `pick-file-bytes`); a **bookshelf view** (`library-view.js`, cover tiles with a
+    deterministic-color **title-card fallback**, active/finished shelves, per-book remove); shell wiring
+    (shelf-as-home, add→store→open, **← Library**, `player.showAt()` = seek-without-autoplay); and
+    **auto-resume** — progress captured at `view.show(addr)`, debounced 1.5 s, flushed on pause/book-end,
+    and a **synchronous** IPC on `beforeunload` to beat the Electron teardown race.
+  - **Independently re-verified by the planner:**
+    - `npm test` → **82/82 green** (re-run here; 68 inherited + 14 Phase 3: `lastAddress`, cover/`coverId`,
+      the 8 `library.js` cases incl. idempotent-preserves-progress + finished-reset + shelf-split, and
+      `player.showAt`). TDD: tests written failing-first per the plan.
+    - `npm run smoke` → **SMOKE OK** (re-run here, exit 0): all **12** assertions incl. open-to-shelf →
+      drag-drop add → click-open → **auto-resume to the advanced sentence (0.1.0, not 0.0.0)** → remove →
+      finished-section move → finished-reopen **restart (0.0.0)** → **persistence across a real relaunch**.
+      Prior Phase 2/2.5/2.6 assertions preserved (comfort persistence now reopens the book via the shelf).
+    - **The resume-page accuracy guard is real, not a false-green:** the smoke asserts the `.is-reading`
+      span is *within the viewport rect*, and I confirmed step 7f runs in **single-page** mode (HTML default
+      `data-view="single"`, fresh user-data-dir, before §8 sets `view=two`) — so it's a genuine page-flip
+      test, not a scroll-mode freebie (which would pass trivially).
+    - **Package gate:** `dist:win` built today (portable `.exe` 13:52, `win-unpacked` 13:51); **both
+      `library.js` and `library-view.js` confirmed in `app.asar`**; and the **packaged `app.js` is
+      byte-identical to verified HEAD** (extracted the asar and diffed — only line endings differ). The
+      shipped exe matches what was verified; **no rebuild needed.**
+  - **⚠️ Critical issue the builder left, fixed by the planner:** a prior AI-assisted edit had replaced **7
+    straight-quote string delimiters in `app.js` with curly quotes (U+2018/2019)** — the renderer script
+    failed to parse, so **a clean checkout of the builder's HEAD would not load the app at all.** The
+    builder fixed it in the working tree **but never committed the fix**, leaving the branch tip broken with
+    the repair (plus the two-step shelf render) uncommitted. The planning session committed the verified
+    working tree so **HEAD now equals the verified state** — `8a83302` (smart-quote repair + two-step
+    render) and `e6b9ff2` (Task 8 smoke, which also never landed). The broken commit stays in history (clean
+    fix-on-top; no rebase). This is *planner committing the builder's own verified fix to repair HEAD* —
+    separation-of-duties (builders don't edit planning docs) is intact.
+  - **Honest caveats / still manual:** (a) **Add-button path is not smoke-proven** — `pick-file-bytes` is
+    code-complete but Playwright can't drive the native OS file dialog, so the smoke exercises only
+    drag-drop. AC2 ("drag-drop *or* Add button") is drag-drop-verified; the button needs one manual click,
+    same as Phase 1. (b) Cosmetic: a duplicated comment block in the smoke (harmless). (c) Two pre-existing
+    Phase 2 manual harnesses (`test/manual/verify-{packaged,synthesize}.js`) remain untracked — not Phase 3.
+    (d) **Branch `phase-3-library` is verified but NOT merged to `main`** — left for the user (merge decision
+    + the listen/by-eye gates below are still open). (e) macOS still unbuilt (Phase 1 carryover).
 
 ---
 
@@ -308,19 +355,14 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      fixes — **`. . .` no longer glitches** and **skipping doesn't flip-then-snap-back** in
      single/two-page mode.
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
-4. **Phase 3 — Library + auto-resume: brainstormed, designed & planned (2026-06-27); ready for a
-   builder.** Bookshelf home, drag/Add import, click-to-resume from the exact sentence. Docs:
-   [`plans/2026-06-27-phase-3-library-design.md`](./plans/2026-06-27-phase-3-library-design.md) (the
-   why/decisions) and [`plans/phase-3-library.md`](./plans/phase-3-library.md) (the TDD builder plan,
-   9 tasks). **Locked decisions:** copy-original + parsed-cache storage under `userData/library`;
-   **resume position is the only per-book state** (all comfort/voice stay global — per-book deferred);
-   **EPUB-only** with a title-card fallback cover (MD/DOCX + generic covers stay Phase 4); shelf is home
-   with the reader as a sub-view; **active vs derived-Finished** sections (`progress === lastAddress`);
-   reopening a finished book **restarts from the beginning**; clear per-book delete. Three robustness
-   requirements pinned in the plan (end-of-book persists `progress === lastAddress` beating the
-   debounce; re-add preserves progress; quit-flush via a **synchronous** IPC to dodge the Electron
-   teardown race). Recommended: **Sonnet 4.6, medium** (standard UI/CRUD; design §9). **No GPU/voice
-   work.**
+4. **✅ Phase 3 — Library + auto-resume: BUILT & planner-verified (2026-06-28; see "What's done").**
+   Branch `phase-3-library`, 82/82 unit + 12 smoke green, package gate passed. **Two user actions left:**
+   (a) **listen/by-eye confirm** — run the fresh `dist/Reader-0.1.0-portable.exe` (built today 13:52,
+   contains the verified code), add a couple of books via **drag-drop AND the Add button** (the button is
+   the one path the smoke can't drive), confirm covers/title-cards, click-to-resume lands on the right
+   sentence *and page*, a finished book moves to **Finished** then restarts on reopen, remove works, and
+   progress survives a quit+relaunch; (b) **decide the merge** — the branch is verified but **not merged to
+   `main`**; merge when you're happy with the listen-test (and ideally after the other Windows gates below).
 5. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
