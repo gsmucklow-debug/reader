@@ -421,14 +421,26 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    trim — replace any old Desktop/USB copies.** **Root cause not fully closed:** `portable` still
    re-extracts each launch; the structural fix (→ **NSIS installer**) is **deferred by user decision
    (2026-06-28)** — revisit only if launch still feels slow.
-7. **▶ NEXT: plan the next phase (fresh chat).** Windows feature set through Phase 4 (part 1) is built,
+7. **✅ Voice variety: picker expanded 8 → ~22 English voices (2026-06-28; `7102f3d`).** User wanted
+   more timbres. Restructured `VOICES` (`app.js`) into 4 groups (US/UK × Female/Male), best-first, **★ on
+   the A/B standouts** (Heart, Bella, Nicole, Emma); `.voice-list` is now scrollable (`max-height:50vh`).
+   English-only (non-English Kokoro voices mispronounce English); D/F-grade voices excluded. **Data + CSS
+   only** — all 54 voices already ship bundled; cache/preview/persistence are already per-voice. New
+   `test/unit/voices.test.js` asserts every curated id has a bundled `.bin`. 103/103 unit + smoke green.
+   Design: [`plans/2026-06-28-voice-variety-design.md`](./plans/2026-06-28-voice-variety-design.md).
+   **Remaining user action:** a **listen-pass** — which new C-grade voices actually sound good is
+   ears-only (★s + best-first order + ▶ preview are the affordances). **Fresh
+   `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:49** (packaged `app.js` confirmed to carry all
+   22 ids) — replace old copies. *(US male is only 3 voices — an inherent Kokoro limit, recorded in the
+   design.)*
+8. **▶ NEXT: plan the next phase (fresh chat).** Windows feature set through Phase 4 (part 1) is built,
    verified & merged. Candidates to scope/brainstorm next (all on Windows; **macOS still deferred until
    the Windows version is finished**): **(a)** the **dtype follow-up** (item below — HIGH VALUE latency
    win, plan ready, gated on an M5 measurement); **(b) Phase 4 (part 2)** — **DOCX** reading and/or
    **pronunciation overrides** (both logged Phase 4 items); **(c)** app **rename** (open question below);
    **(d)** an NSIS installer if the launch trim wasn't enough. Start the fresh session by reading this
    HANDOFF, then `superpowers:brainstorming` the chosen direction before any plan.
-8. **Only after the Windows version is finished: the macOS build** (deferred by user decision
+9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
    `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
