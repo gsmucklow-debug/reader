@@ -73,8 +73,12 @@ Expected: **82 pass, 0 fail** (the current count on master — note it; never re
 the parser at runtime, and electron-builder bundles production deps).
 
 ```bash
-npm install marked
+npm install marked@^12
 ```
+
+> Pin to a **CJS-safe major** (`marked@^12`). `require('marked')` must return `{ marked }` with a
+> sync `marked.parse`. If a future ESM-only major sneaks in, the Step 2 gate below catches it
+> immediately — but pinning avoids the stall.
 
 **Step 2:** Confirm it loads and is pure-JS (no native build step ran):
 
@@ -487,8 +491,9 @@ async function dropBook(win) {
 }
 ```
 
-**Step 3:** Append a Markdown section at the **very end** of the smoke (after the existing
-restart-persistence checks — purely additive, so it can't perturb the earlier sequence):
+**Step 3:** Add a Markdown section **after the existing restart-persistence checks but BEFORE the
+final `app.close()` / `console.log('SMOKE OK …')` lines** (purely additive, so it can't perturb the
+earlier sequence — just don't put it after the close):
 
 ```js
   // --- Phase 4: Markdown reading -------------------------------------------
@@ -586,3 +591,8 @@ The planning session records it into HANDOFF.
 DOCX (a later phase); generic generated covers (title cards suffice); Obsidian `[[wikilink]]`/`#tag`/
 `![[embed]]` special-casing; pronunciation overrides (still a later Phase 4 item); per-book settings;
 the "voice-leads" nav flag; app rename.
+
+**Known minor edge — do NOT patch `htmlToBlocks` for it:** deeply *nested* Markdown lists
+(`- a\n  - b`) can double-extract the nested text (the outer `<li>` has no *direct* block child, so it
+extracts "a b" while the inner `<li>` also extracts "b"). Rare in prose drafts. Flat lists are fine.
+Leave `htmlToBlocks` alone — it's shared with the verified EPUB path; a fix there risks regressing EPUB.
