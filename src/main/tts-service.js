@@ -38,9 +38,19 @@ function toWavBytes(audio) {
   return encodeWav(audio.audio, audio.sampling_rate);
 }
 
+// Normalize text for TTS without touching the displayed sentence.
+// - #N       → "number N"  (hash before digit reads as "hash")
+// - ALL-CAPS → lowercase   (Kokoro spells out all-caps words as acronyms)
+//   Leaves single letters (I, A) and dotted forms (F.B.I.) alone.
+function normalizeTTS(text) {
+  return text
+    .replace(/#(\d)/g, 'number $1')
+    .replace(/\b[A-Z][A-Z']*[A-Z]\b/g, w => w.toLowerCase());
+}
+
 async function synthesize({ text, voice, speed }) {
   const tts = await getTTS();
-  const audio = await tts.generate(text, { voice: voice || 'af_heart', speed: clampSpeed(speed) });
+  const audio = await tts.generate(normalizeTTS(text), { voice: voice || 'af_heart', speed: clampSpeed(speed) });
   return { wav: toWavBytes(audio), sampleRate: audio.sampling_rate };
 }
 

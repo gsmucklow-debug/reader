@@ -69,13 +69,6 @@ function isNonBoundaryDot(text, dotPos) {
  */
 function splitSentences(text) {
   if (!text || !text.trim()) return [];
-  // Normalize symbols that TTS reads wrong: #4 -> "number 4"
-  text = text.replace(/#(\d)/g, 'number $1');
-  // ALL-CAPS words are read as acronyms letter-by-letter; lowercase them so TTS
-  // reads them as words. Matches 2+ uppercase letters (with optional apostrophe
-  // for contractions like YOU'RE, DON'T). Leaves "I", "A", and dotted forms
-  // like "F.B.I." alone (dots break the run; single chars are excluded).
-  text = text.replace(/\b[A-Z][A-Z']*[A-Z]\b/g, w => w.toLowerCase());
 
   const sentences = [];
   let start = 0;

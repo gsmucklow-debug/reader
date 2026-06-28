@@ -70,7 +70,7 @@ test('keeps a leading in-doc heading as the first (readable) paragraph', async (
   const doc = await parseEpub(buf);
   const ch = doc.chapters[0];
   assert.strictEqual(ch.paragraphs[0].heading, 1, 'first paragraph carries its heading level');
-  assert.deepStrictEqual(ch.paragraphs[0].sentences, ['barry'], 'the heading text is normalized for TTS and read');
+  assert.deepStrictEqual(ch.paragraphs[0].sentences, ['BARRY'], 'the heading text is kept and read');
   assert.strictEqual(ch.paragraphs[1].heading, undefined, 'the body paragraph is a normal paragraph');
   assert.deepStrictEqual(ch.paragraphs[1].sentences, ['He woke at noon.']);
   assert.strictEqual(ch.title, 'BARRY', 'metadata title falls back to the first heading');

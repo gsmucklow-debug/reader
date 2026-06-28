@@ -110,35 +110,3 @@ test('collapses internal whitespace/newlines within a sentence', () => {
   );
 });
 
-test('normalizes # before a digit to "number" for TTS', () => {
-  assert.deepStrictEqual(
-    splitSentences('Whispers From the Electric Veil #4'),
-    ['Whispers From the Electric Veil number 4']
-  );
-  assert.deepStrictEqual(
-    splitSentences('See issue #12 and pull request #3.'),
-    ['See issue number 12 and pull request number 3.']
-  );
-});
-
-test('lowercases ALL-CAPS words so TTS reads them as words, not acronyms', () => {
-  assert.deepStrictEqual(
-    splitSentences("YOU'RE THROUGH THE WORST OF IT NOW, the screen said."),
-    ["you're through the worst of it now, the screen said."]
-  );
-  // Contractions
-  assert.deepStrictEqual(
-    splitSentences("DON'T STOP."),
-    ["don't stop."]
-  );
-  // Single letters (I, A) are left alone
-  assert.deepStrictEqual(
-    splitSentences('I saw A bird.'),
-    ['I saw A bird.']
-  );
-  // Dotted acronyms (F.B.I.) are left alone — dots break the all-caps run
-  assert.deepStrictEqual(
-    splitSentences('Call the F.B.I.'),
-    ['Call the F.B.I.']
-  );
-});
