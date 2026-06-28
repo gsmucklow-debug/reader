@@ -308,10 +308,12 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     render) and `e6b9ff2` (Task 8 smoke, which also never landed). The broken commit stays in history (clean
     fix-on-top; no rebase). This is *planner committing the builder's own verified fix to repair HEAD* —
     separation-of-duties (builders don't edit planning docs) is intact.
-  - **Honest caveats / still manual:** (a) **Add-button path is not smoke-proven** — `pick-file-bytes` is
-    code-complete but Playwright can't drive the native OS file dialog, so the smoke exercises only
-    drag-drop. AC2 ("drag-drop *or* Add button") is drag-drop-verified; the button needs one manual click,
-    same as Phase 1. (b) Cosmetic: a duplicated comment block in the smoke (harmless). (c) Two pre-existing
+  - **Honest caveats / still manual:** (a) **Add-button path: smoke can't drive it, but the USER
+    manually tested it — works (2026-06-28).** `pick-file-bytes` is code-complete and Playwright can't
+    drive the native OS file dialog, so the *smoke* exercises only drag-drop — but the user added books via
+    the Add button and confirmed real **cover extraction on their own commercial EPUBs** (Dragonflight,
+    Recursion) onto the active "Reading" shelf. AC2 now satisfied both ways. (b) Cosmetic: a duplicated
+    comment block in the smoke (harmless). (c) Two pre-existing
     Phase 2 manual harnesses (`test/manual/verify-{packaged,synthesize}.js`) remain untracked — not Phase 3.
     (d) **Branch `phase-3-library` is verified but NOT merged to `main`** — left for the user (merge decision
     + the listen/by-eye gates below are still open). (e) macOS still unbuilt (Phase 1 carryover).
@@ -357,12 +359,12 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    (Mechanism is smoke-proven; only the *listening* / *by-eye* / *adapter-off* gestures can't be automated.)
 4. **✅ Phase 3 — Library + auto-resume: BUILT & planner-verified (2026-06-28; see "What's done").**
    Branch `phase-3-library`, 82/82 unit + 12 smoke green, package gate passed. **Two user actions left:**
-   (a) **listen/by-eye confirm** — run the fresh `dist/Reader-0.1.0-portable.exe` (built today 13:52,
-   contains the verified code), add a couple of books via **drag-drop AND the Add button** (the button is
-   the one path the smoke can't drive), confirm covers/title-cards, click-to-resume lands on the right
-   sentence *and page*, a finished book moves to **Finished** then restarts on reopen, remove works, and
-   progress survives a quit+relaunch; (b) **decide the merge** — the branch is verified but **not merged to
-   `main`**; merge when you're happy with the listen-test (and ideally after the other Windows gates below).
+   (a) **listen/by-eye confirm** — **Add button + real cover extraction confirmed working by the user
+   (2026-06-28)** on their own EPUBs (Dragonflight, Recursion). Still worth a pass on: click-to-resume
+   lands on the right sentence *and page*, a finished book moves to **Finished** then restarts on reopen,
+   remove works, and progress survives a quit+relaunch; (b) **decide the merge** — the branch is verified
+   but **not merged to `main`**; merge when you're happy with the listen-test (and ideally after the other
+   Windows gates below).
 5. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
