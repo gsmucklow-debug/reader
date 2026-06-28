@@ -317,6 +317,48 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     Phase 2 manual harnesses (`test/manual/verify-{packaged,synthesize}.js`) remain untracked — not Phase 3.
     (d) **Branch `phase-3-library` is verified but NOT merged to `main`** — left for the user (merge decision
     + the listen/by-eye gates below are still open). (e) macOS still unbuilt (Phase 1 carryover).
+- [x] **Phase 4 (part 1) — Markdown reading: built & planner-verified (2026-06-28, Windows; branch
+  `phase-4-markdown`).** Built by a Sonnet 4.6 builder (8 feature/fix commits, `832599c` → `556a58d`);
+  planning session **independently re-verified** — re-ran the full unit suite, **machine-ran the smoke
+  (which the builder couldn't), read every diff, and listed the packaged asar — not taken on "looks
+  good."** **The user can now drop a `.md`/`.markdown` draft onto the shelf and listen to it with the
+  same chapters/headings/highlight/resume/finished/remove as an EPUB — via the existing reader, zero new
+  reader logic.**
+  - **What shipped:** `src/parse/markdown.js` — pure `parseMarkdown(buffer, fileName)`: `marked`→HTML→
+    **reuses the EPUB `htmlToBlocks`** + the Phase 2.6 `{heading?, sentences}` model, with one new
+    **top-most-heading chapter split** (smallest `#` level present; no-heading file → one chapter; leading
+    pre-heading content → an untitled chapter); strips a leading YAML frontmatter block; title falls back
+    filename→"Untitled". `src/parse/index.js` — a tiny **format dispatcher** (`parseDocument`/`extractCover`
+    by extension; unsupported → throws `Unsupported file type` → existing "Couldn't open that file" card).
+    `library.js` swapped to the dispatcher (passes `fileName` through); `main.js` picker + both empty-state
+    copies accept `.md`/`.markdown`. **No reader/IPC/`document.json` changes** — same `Document` shape, so
+    resume/finished/remove/persist come free. `.md` has no embedded cover → the Phase 3 **title-card**
+    fallback (no new cover code).
+  - **TTS fixes (apply to EPUB + Markdown equally), `34acf73`→`556a58d`:** `#N`→"number N"; ALL-CAPS words
+    lowercased at **synthesis time only** (display unchanged; dotted `F.B.I.` left alone) — moved out of
+    parse-time into a new `src/main/tts-normalize.js`. **Normalization now runs before the clip-cache key
+    is computed** (`main.js` `synthesize` handler: `get`/synth/`put` all key on the normalized text), so
+    old mispronounced clips become cold misses and are re-synthesized correctly — **verified by reading the
+    diff**: the duplicate `normalizeTTS` was removed from `tts-service.js` (no double-normalization).
+  - **Independently re-verified by the planner:**
+    - `npm test` → **100/100 green** (re-run here; 82 inherited + markdown 7 + dispatch 5 + library 1 +
+      tts-normalize 5). The markdown/dispatch tests are pure (inline strings, no fixture dependence).
+    - `npm run smoke` → **SMOKE OK** (re-run here, exit 0) — **now machine-run, closing the builder's main
+      caveat.** All prior assertions intact **plus** the new markdown line: drop `sample.md` → opens to the
+      reader → **first narratable span is the heading `0.0.0`** → narration advances through the **real
+      engine** → back on the shelf the tile is a **title-card, not an `<img>`**.
+    - **Package gate:** `dist/win-unpacked/resources/app.asar` (mtime 19:21, matching the tip commit)
+      contains `src/parse/markdown.js`, `src/parse/index.js`, `src/main/tts-normalize.js`, and
+      `node_modules/marked/lib/marked.cjs` — confirmed via `asar list`.
+  - **Honest caveats / still manual:** (a) **voice quality on real prose is ears-only** — not assertable by
+    Playwright; the user should listen to one of their own drafts. (b) **Add-button path** for `.md` is
+    code-complete but smoke can't drive the native dialog (same as EPUB; drag-drop is the automated path).
+    (c) Cosmetic: the stored copy of a `.md` is still written as `original.epub` in its book folder
+    (`library.js` hardcodes that name) — harmless (it's a hash-keyed copy, never re-parsed by name), but
+    rename if it ever matters. (d) Known minor edge (left alone per plan): deeply **nested** Markdown lists
+    can double-extract — shared with the EPUB `htmlToBlocks` path; don't patch it (regresses EPUB). Flat
+    lists fine. (e) **Branch `phase-4-markdown` is verified but NOT merged to `master`** — left for the
+    user. (f) macOS still unbuilt (Phase 1 carryover).
 
 ---
 
@@ -365,18 +407,12 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    the right sentence *and page*, a finished book moves to **Finished** then restarts on reopen, remove
    works, and progress survives a quit+relaunch. (The shipped `dist/Reader-0.1.0-portable.exe` from
    2026-06-28 13:52 already contains the merged code.)
-5. **🔨 Phase 4 (part 1) — Markdown reading: brainstormed, designed, planned; BUILDER WORKING NOW
-   (2026-06-28).** Lets the user add their own `.md`/`.markdown` drafts to the library and listen, with
-   the same chapters/headings/highlight/resume as EPUB. Docs:
-   [`plans/2026-06-28-phase-4-markdown-design.md`](./plans/2026-06-28-phase-4-markdown-design.md) (the
-   why/decisions) and [`plans/phase-4-markdown.md`](./plans/phase-4-markdown.md) (the TDD builder plan, 8
-   tasks). **Locked scope (narrowed during brainstorming):** **Markdown only** (DOCX deferred); **no new
-   cover code** (the Phase 3 title-card fallback covers `.md`, so "generic covers" is dropped — YAGNI);
-   **no reader/IPC/`document.json` changes** — `parseMarkdown` reuses the EPUB `marked`→HTML→`htmlToBlocks`
-   path + the Phase 2.6 `{heading?, sentences}` model, with one new top-most-heading chapter-split step,
-   routed via a tiny `src/parse/index.js` dispatcher. Resume/finished/remove/persist come free (same
-   `Document` shape). Builder: **Sonnet 4.6, medium**; planner (Opus) verifies the report here when it
-   lands. **No GPU/voice work.** *(Still-deferred Phase 4 item: pronunciation overrides.)*
+5. **✅ Phase 4 (part 1) — Markdown reading: BUILT, planner-verified (2026-06-28; branch
+   `phase-4-markdown`).** Built by a Sonnet 4.6 builder; planning session **independently re-verified** —
+   re-ran the full suite + **machine-ran the smoke** (the builder could only hand-verify it), read every
+   diff, and listed the packaged asar. See the "What's done" Phase 4 entry above. **Remaining:** merge to
+   `master` + a user listen-pass on a real `.md` draft. Still-deferred Phase 4 items: **pronunciation
+   overrides** and **DOCX**.
 6. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
