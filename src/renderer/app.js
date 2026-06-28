@@ -97,7 +97,7 @@ function showDocument(doc, fileName) {
 }
 
 function renderChapter(ci) {
-  readingEl.style.transform = ‘none’;
+  readingEl.style.transform = 'none';
   state.page = 0;
   readingEl.innerHTML = window.ReaderRender.renderChapterHTML(state.doc.chapters[ci], ci);
   viewport.scrollTop = 0;
@@ -128,9 +128,20 @@ async function showLibrary() {
   pendingAddr = null;                 // clear cross-book contamination (advisor note)
   clearTimeout(progressTimer);
   state.currentBookId = null;
-  const { active, finished } = await window.reader.libraryShelf();
-  await ReaderLibrary.render(active, finished, { onOpen: openFromLibrary, onRemove: removeFromLibrary });
+  // Show the library screen immediately with an empty shelf so the UI responds
+  // right away — on boot the main process may take a moment to serve the IPC.
+  await ReaderLibrary.render([], [], { onOpen: openFromLibrary, onRemove: removeFromLibrary });
   ReaderLibrary.show();
+  // Populate with real books once the IPC resolves.
+  try {
+    const { active, finished } = await window.reader.libraryShelf();
+    // Guard: if the user opened a book while the IPC was in flight (drop on boot,
+    // or very fast click), don't clobber the reader state.
+    if (document.body.dataset.screen !== 'library') return;
+    await ReaderLibrary.render(active, finished, { onOpen: openFromLibrary, onRemove: removeFromLibrary });
+  } catch (e) {
+    console.warn('[Reader] shelf load failed:', e);
+  }
 }
 
 async function openFromLibrary(rec) {
@@ -163,9 +174,9 @@ async function addAndOpen(bytes, fileName) {
     await openFromLibrary(rec);
   } catch (err) {
     // Show error on the library empty card (not the reader empty-state which is hidden).
-    const el = document.getElementById(‘library-empty’);
+    const el = document.getElementById('library-empty');
     if (el) {
-      el.innerHTML = ‘<h1>Couldn\’t open that file</h1><p>It may not be a valid EPUB. Try another book.</p>’;
+      el.innerHTML = '<h1>Couldn\'t open that file</h1><p>It may not be a valid EPUB. Try another book.</p>';
       el.hidden = false;
     } else {
       reportError(err);
@@ -174,10 +185,10 @@ async function addAndOpen(bytes, fileName) {
 }
 
 function reportError(err) {
-  console.error(‘[Reader] failed to open book:’, err);
-  emptyState.querySelector(‘.empty-card’).innerHTML =
-    ‘<h1>Couldn\’t open that file</h1><p>It may not be a valid EPUB. ‘ +
-    ‘Try another book.</p>’;
+  console.error('[Reader] failed to open book:', err);
+  emptyState.querySelector('.empty-card').innerHTML =
+    '<h1>Couldn\'t open that file</h1><p>It may not be a valid EPUB. ' +
+    'Try another book.</p>';
   emptyState.hidden = false;
   viewport.hidden = true;
   bottomBar.hidden = true;
@@ -885,4 +896,4 @@ window.addEventListener('beforeunload', () => {
 buildFontList();
 buildVoiceList(); // before loadSettings() so applySettings' markActiveVoice has buttons
 loadSettings();
-showLibrary(); // shelf is home (Phase 3)
+showLibrary().catch((e) => console.error('[Reader] boot showLibrary failed:', e)); // shelf is home (Phase 3)
