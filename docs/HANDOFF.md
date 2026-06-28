@@ -407,13 +407,28 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    the right sentence *and page*, a finished book moves to **Finished** then restarts on reopen, remove
    works, and progress survives a quit+relaunch. (The shipped `dist/Reader-0.1.0-portable.exe` from
    2026-06-28 13:52 already contains the merged code.)
-5. **✅ Phase 4 (part 1) — Markdown reading: BUILT, planner-verified (2026-06-28; branch
-   `phase-4-markdown`).** Built by a Sonnet 4.6 builder; planning session **independently re-verified** —
-   re-ran the full suite + **machine-ran the smoke** (the builder could only hand-verify it), read every
-   diff, and listed the packaged asar. See the "What's done" Phase 4 entry above. **Remaining:** merge to
-   `master` + a user listen-pass on a real `.md` draft. Still-deferred Phase 4 items: **pronunciation
-   overrides** and **DOCX**.
-6. **Only after the Windows version is finished: the macOS build** (deferred by user decision
+5. **✅ Phase 4 (part 1) — Markdown reading: BUILT, planner-verified & MERGED to `master`
+   (2026-06-28).** 100/100 unit + smoke (machine-run) green, package gate passed; merged via clean
+   fast-forward (`447b7b1` tip) and `phase-4-markdown` deleted. See the "What's done" Phase 4 entry above.
+   **Remaining user action:** a listen-pass on a real `.md` draft (voice quality is ears-only).
+   Still-deferred Phase 4 items: **pronunciation overrides** and **DOCX**.
+6. **✅ Launch-speed: onnxruntime-node binary trim landed & verified (2026-06-28; `447b7b1`).** The
+   portable `.exe` was slow to open because it self-extracts its payload on every cold launch, and
+   `onnxruntime-node` shipped ~208 MB of all-platform native binaries (only the Win-x64 CPU one runs).
+   Trimmed to the target binary → **`app.asar.unpacked` 231 MB → 39 MB** (~192 MB less to extract/scan
+   per launch); offline-synth gate re-passed (`201644 bytes @ 24000 Hz`). See the onnxruntime gotcha for
+   the exact `files` excludes. **Fresh `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:34 with the
+   trim — replace any old Desktop/USB copies.** **Root cause not fully closed:** `portable` still
+   re-extracts each launch; the structural fix (→ **NSIS installer**) is **deferred by user decision
+   (2026-06-28)** — revisit only if launch still feels slow.
+7. **▶ NEXT: plan the next phase (fresh chat).** Windows feature set through Phase 4 (part 1) is built,
+   verified & merged. Candidates to scope/brainstorm next (all on Windows; **macOS still deferred until
+   the Windows version is finished**): **(a)** the **dtype follow-up** (item below — HIGH VALUE latency
+   win, plan ready, gated on an M5 measurement); **(b) Phase 4 (part 2)** — **DOCX** reading and/or
+   **pronunciation overrides** (both logged Phase 4 items); **(c)** app **rename** (open question below);
+   **(d)** an NSIS installer if the launch trim wasn't enough. Start the fresh session by reading this
+   HANDOFF, then `superpowers:brainstorming` the chosen direction before any plan.
+8. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
    `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
