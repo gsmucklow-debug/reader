@@ -49,11 +49,20 @@
       }
     ],
     "win": {
-      "target": "portable",
-      "artifactName": "Reader-${version}-portable.exe",
+      "target": "nsis",
       "files": [
         "!**/node_modules/onnxruntime-node/bin/napi-v3/darwin/**"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Reader-${version}-setup.exe"
     },
     "mac": {
       "target": [
