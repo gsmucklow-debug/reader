@@ -359,6 +359,49 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     can double-extract — shared with the EPUB `htmlToBlocks` path; don't patch it (regresses EPUB). Flat
     lists fine. (e) **Branch `phase-4-markdown` is verified but NOT merged to `master`** — left for the
     user. (f) macOS still unbuilt (Phase 1 carryover).
+- [x] **Phase 4 (part 2) — DOCX reading: built & planner-verified (2026-06-29, Windows; branch
+  `phase-4-docx`).** Built by a fresh builder (7 commits, `67b3ea8` → `b9ecbe0`, off `master`); planning
+  session **independently re-verified** — re-ran the full unit suite, **machine-ran the smoke on the real
+  Electron runtime, read every diff, and listed the packaged asar — not taken on "looks good."** **The user
+  can now drop a Word `.docx` draft onto the shelf and listen to it exactly like an EPUB/Markdown book —
+  chapters from Heading styles, headings read aloud, sentence highlight, auto-resume, title-card on the
+  shelf — via the existing reader, zero new reader/IPC/library/schema code.**
+  - **What shipped:** `src/parse/docx.js` — `parseDocx(buffer, fileName)`: **mammoth** (pure-JS) converts
+    `.docx`→HTML (Word Heading 1–6 styles → `<h1–h6>` via mammoth's default style map — no `styles.xml`
+    needed; the plan's fallback was never required), reuses the EPUB `htmlToBlocks`, then the new shared
+    helper. `src/parse/blocks-to-chapters.js` — **`blocksToChapters` extracted from `markdown.js`**
+    (format-agnostic: top-most-heading split, `{heading?, sentences}`, leading-content → untitled chapter,
+    title = first top-level heading ‖ filename ‖ "Untitled"); **`markdown.js` now delegates to it** (the
+    Markdown tests are the regression net). `src/parse/index.js` dispatches `.docx`→`parseDocx`; `main.js`
+    both picker filters + `index.html` both empty-state copies accept Word files. `.docx` only (not legacy
+    `.doc`); no cover → Phase 3 **title-card** fallback. Same `Document` shape → resume/finished/remove/persist
+    come free.
+  - **Independently re-verified by the planner:**
+    - `npm test` → **113/113 green** (re-run here; 103 inherited + `blocks-to-chapters` 6 + `docx` 2 +
+      `parse-dispatch` 2). The extract is **behavior-preserving** — `markdown.test.js` stays 7/7 and the new
+      helper tests pin smallest-heading split, no-heading→one-chapter, leading-content, title fallback, and
+      empty-block drop.
+    - `npm run smoke` → **SMOKE OK** (re-run here on the real Electron runtime, exit 0) — all prior
+      EPUB+Markdown assertions intact **plus** the new line: drop `sample.docx` → opens to the reader →
+      **first narratable span is the heading `0.0.0`** → narration advances through the **real engine** →
+      back on the shelf the tile is a **title-card, not an `<img>`**.
+    - **Package gate:** `npm run dist:win` built (portable `.exe` + `win-unpacked`, asar mtime 12:25);
+      `asar list` confirms `src\parse\docx.js`, `src\parse\blocks-to-chapters.js`, `src\parse\index.js`,
+      `src\parse\markdown.js`, and the **mammoth subtree (198 entries)** all ship — and **0 `.node` files in
+      mammoth** → pure-JS, no `asarUnpack` needed (unlike onnxruntime).
+  - **Honest caveats / still manual:** (a) **voice quality on a real `.docx` draft is ears-only** — the
+    user should listen to one of their own Word drafts. (b) **Add-button native dialog** can't be
+    smoke-driven (OS dialog); the picker-filter change is code-only — drag-drop is the automated path. (c)
+    resume/finished/remove/persist for a docx book are covered **structurally** (identical `Document` shape,
+    zero new reader/library code) rather than re-tested docx-specifically — by design. (d) the stored copy
+    of a `.docx` is still written as `original.epub` in its hash-keyed book folder (`library.js` hardcodes
+    that name) — harmless, same as Markdown. (e) **Branch `phase-4-docx` is verified but NOT merged to
+    `master`** — left for the user. (f) macOS still unbuilt (Phase 1 carryover).
+  - **Pre-existing npm advisories (builder follow-up note, accepted):** the 10 high-severity advisories npm
+    reports are **NOT from mammoth** (its subtree — jszip/xmlbuilder/lop — is clean) — they're pre-existing
+    in `electron` (≤39.8.4) and `tar` (via electron-builder). The only fixes are `--force` breaking majors
+    that change the runtime/packager under the whole app → a dedicated branch with its own smoke + manual
+    verification, not folded into this feature. Left untouched here.
 
 ---
 
@@ -433,9 +476,11 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:49** (packaged `app.js` confirmed to carry all
    22 ids) — replace old copies. *(US male is only 3 voices — an inherent Kokoro limit, recorded in the
    design.)*
-8. **▶ NEXT: Phase 4 (part 2) — DOCX reading: brainstormed, designed & planned (2026-06-28); READY
-   FOR A BUILDER, not built.** User chose DOCX as the next direction. Brainstormed + scoped with the
-   user; two docs written:
+8. **✅ Phase 4 (part 2) — DOCX reading: BUILT & planner-verified (2026-06-29; branch `phase-4-docx`,
+   NOT merged).** 113/113 unit + smoke (machine-run) green, package gate passed (mammoth 198 entries, 0
+   native binaries). See the "What's done" Phase 4 (part 2) entry above. **Remaining user action:** merge
+   `phase-4-docx` → `master` + a listen-pass on a real `.docx` draft (voice quality is ears-only). The
+   original planning docs (for reference):
    - [`plans/2026-06-28-docx-reading-design.md`](./plans/2026-06-28-docx-reading-design.md) — the
      decisions/why. **mammoth** (pure-JS) converts `.docx`→HTML, Word Heading 1–6 styles → `<h1–h6>`;
      reuse `htmlToBlocks`; **extract a shared `blocksToChapters` helper** from `markdown.js` that both
