@@ -587,6 +587,46 @@ async function dropBook(win) {
   assert.ok(mdTile && mdTile.card && !mdTile.img, 'markdown book should show a title-card, not a cover');
   console.log('  ✓ markdown (.md): title-card tile, opens, heading is 0.0.0, narration advances');
 
+  // --- Phase 4 (part 2): DOCX reading --------------------------------------
+  // The Markdown section above leaves the app on the library screen, so we drop
+  // directly here (no leading #library-btn click — that is the reader-only back
+  // button and would auto-wait/time out from the library screen).
+  await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
+  await dropFile(
+    win, path.join(ROOT, 'test', 'fixtures', 'sample.docx'), 'sample.docx',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  );
+  await win.waitForSelector('body[data-screen="reader"]', { timeout: 5000 });
+
+  // The first narratable span is the chapter heading itself (0.0.0).
+  const docxFirst = await win.evaluate(() => {
+    const el = document.querySelector('span.sentence');
+    return el ? `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` : null;
+  });
+  assert.strictEqual(docxFirst, '0.0.0', `docx first span should be 0.0.0, got ${docxFirst}`);
+
+  // Narration advances through the REAL engine.
+  await win.evaluate(() => document.getElementById('play-pause').click());
+  await win.waitForFunction(() => {
+    const el = document.querySelector('.sentence.is-reading');
+    return el && `${el.dataset.chapter}.${el.dataset.paragraph}.${el.dataset.sentence}` !== '0.0.0';
+  }, null, { timeout: 30000 });
+  await win.evaluate(() => {
+    const b = document.getElementById('play-pause');
+    if (b.getAttribute('aria-label') === 'Pause') b.click();
+  });
+
+  // The tile uses a TITLE-CARD (no embedded cover), not an <img>.
+  await win.click('#library-btn');
+  await win.waitForSelector('#shelf-active .book-tile', { timeout: 10000 });
+  const docxTile = await win.evaluate(() => {
+    const tiles = [...document.querySelectorAll('#shelf-active .book-tile')];
+    const t = tiles.find((x) => (x.querySelector('.tile-title')?.textContent || '').includes('Sample Word'));
+    return t ? { card: !!t.querySelector('.cover.title-card'), img: !!t.querySelector('.cover img') } : null;
+  });
+  assert.ok(docxTile && docxTile.card && !docxTile.img, 'docx book should show a title-card, not a cover');
+  console.log('  ✓ docx (.docx): title-card tile, opens, heading is 0.0.0, narration advances');
+
   await app.close();
 
   console.log('SMOKE OK:', JSON.stringify(stats),
