@@ -111,7 +111,7 @@ ipcMain.handle('pick-and-parse', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
     title: 'Open a book',
     properties: ['openFile'],
-    filters: [{ name: 'Books', extensions: ['epub', 'md', 'markdown'] }],
+    filters: [{ name: 'Books', extensions: ['epub', 'md', 'markdown', 'docx'] }],
   });
   if (res.canceled || res.filePaths.length === 0) return null;
   const filePath = res.filePaths[0];
@@ -188,7 +188,7 @@ ipcMain.on('library:updateProgressSync', (evt, id, addr) => {
 ipcMain.handle('pick-file-bytes', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
     title: 'Open a book', properties: ['openFile'],
-    filters: [{ name: 'Books', extensions: ['epub', 'md', 'markdown'] }],
+    filters: [{ name: 'Books', extensions: ['epub', 'md', 'markdown', 'docx'] }],
   });
   if (res.canceled || !res.filePaths[0]) return null;
   const fp = res.filePaths[0];
