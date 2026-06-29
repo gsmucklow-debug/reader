@@ -406,8 +406,8 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     in `electron` (≤39.8.4) and `tar` (via electron-builder). The only fixes are `--force` breaking majors
     that change the runtime/packager under the whole app → a dedicated branch with its own smoke + manual
     verification, not folded into this feature. Left untouched here.
-- [x] **NSIS installer — built & planner-verified (2026-06-29, Windows; branch `nsis-installer`, NOT
-  merged).** Brainstormed/decided with the user, design
+- [x] **NSIS installer — built, planner-verified, MERGED & user-confirmed (2026-06-29, Windows).**
+  Brainstormed/decided with the user, design
   [`plans/2026-06-29-nsis-installer-design.md`](./plans/2026-06-29-nsis-installer-design.md), plan
   [`plans/phase-nsis-installer.md`](./plans/phase-nsis-installer.md). **The Windows build is now an
   assisted install wizard instead of a self-extracting `portable.exe` — so the app installs once and opens
@@ -429,11 +429,13 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     - **Package gate:** `node test/manual/verify-packaged.js` → offline synth **`201644 bytes @ 24000 Hz`**
       (model + onnx-unpacked resolve in the shipped tree).
     - Regression nets unperturbed: `npm test` → **113/113**, `npm run smoke` → **SMOKE OK**.
-  - **Honest caveats / user's manual gate (cannot be automated):** (a) **running the wizard** — folder
-    pick, no UAC prompt, Desktop/Start-menu shortcuts appear, app launches + reads a book. (b)
-    **upgrade-preserves-library** — install → add a book → rebuild → reinstall over it → book + progress
-    still there. (c) First-run **SmartScreen** warning is expected (unsigned, same as the portable exe). (d)
-    **Branch `nsis-installer` is verified but NOT merged to `master`** — left for the user.
+  - **✅ Merged to `master` (2026-06-29):** clean fast-forward (`2e68e3a` tip), `nsis-installer` deleted.
+  - **✅ User-confirmed (2026-06-29): "installed fine, loads quicker"** — the wizard ran cleanly and the
+    install-once launch-speed payoff is real. Closes the primary manual gate (wizard run + faster launch).
+  - **Still worth a one-time user check (not blocking):** (a) **upgrade-preserves-library** — install →
+    add a book → rebuild → reinstall over it → book + progress still there (the code guarantees it via the
+    install-independent userData path, but never exercised end-to-end). (b) First-run **SmartScreen**
+    warning is expected (unsigned, same as the portable exe).
 
 ---
 
@@ -495,7 +497,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    the exact `files` excludes. **Fresh `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:34 with the
    trim — replace any old Desktop/USB copies.** **✅ Root cause now CLOSED (2026-06-29):** the structural
    fix landed — the build switched `portable` → **NSIS installer** (extract once at install, not on every
-   launch). See the "NSIS installer" entry in "What's done" (branch `nsis-installer`, not yet merged).
+   launch). Merged to `master` & user-confirmed ("loads quicker"). See the "NSIS installer" entry in
+   "What's done".
 7. **✅ Voice variety: picker expanded 8 → ~22 English voices (2026-06-28; `7102f3d`).** User wanted
    more timbres. Restructured `VOICES` (`app.js`) into 4 groups (US/UK × Female/Male), best-first, **★ on
    the A/B standouts** (Heart, Bella, Nicole, Emma); `.voice-list` is now scrollable (`max-height:50vh`).
@@ -527,8 +530,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    - **▶ NEXT — still-open candidates, no direction chosen yet** (all Windows; macOS still deferred): the
      **dtype follow-up** (HIGH VALUE latency win, plan ready at [`plans/dtype-validate-and-swap.md`](./plans/dtype-validate-and-swap.md),
      gated on an M5 measurement); **pronunciation overrides** (the last logged Phase 4 item — no plan yet);
-     app **rename** (open question below). *(NSIS installer — done 2026-06-29, branch `nsis-installer`, see
-     "What's done".)* **Pick one with the user before planning.**
+     app **rename** (open question below). *(NSIS installer — done & merged 2026-06-29, see "What's
+     done".)* **Pick one with the user before planning.**
 9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
@@ -704,8 +707,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   `backends/onnx.js` — removing it breaks the engine; left alone deliberately). **✅ Launch root cause now
   CLOSED (2026-06-29):** the build switched `portable` → an **NSIS installer** (`build.win.target` +
   `build.nsis` in `package.json`) — it extracts once at install, so launches no longer re-extract. The
-  trim is still worth keeping (smaller installer + smaller installed footprint). Branch `nsis-installer`,
-  not yet merged.
+  trim is still worth keeping (smaller installer + smaller installed footprint). Merged to `master`
+  2026-06-29 (`2e68e3a`); user-confirmed "loads quicker."
 - **utilityProcess WAV transfer:** send the bytes **in the message body** (`postMessage({…, wav})`),
   **not** in a transfer list — Electron's utilityProcess uses structured clone; a `[wav.buffer]`
   transfer-list arg makes `msg.wav` arrive `undefined`. (This bit us; the plan's first draft had it.)
