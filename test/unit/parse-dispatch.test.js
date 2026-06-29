@@ -28,3 +28,13 @@ test('parseDocument throws a clear error on an unsupported type', async () => {
 test('extractCover returns null for markdown, never throws', async () => {
   assert.equal(await extractCover(Buffer.from('# x'), 'x.md'), null);
 });
+
+test('parseDocument dispatches .docx to the DOCX parser', async () => {
+  const buf = fs.readFileSync(path.join(__dirname, '../fixtures/sample.docx'));
+  const doc = await parseDocument(buf, 'sample.docx');
+  assert.equal(doc.chapters[0].title, 'Sample Word Document');
+});
+
+test('extractCover returns null for docx, never throws', async () => {
+  assert.equal(await extractCover(Buffer.from('x'), 'x.docx'), null);
+});

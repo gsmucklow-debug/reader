@@ -2,6 +2,7 @@
 const path = require('node:path');
 const { parseEpub, coverImage } = require('./epub');
 const { parseMarkdown } = require('./markdown');
+const { parseDocx } = require('./docx');
 
 function extOf(fileName) {
   return path.extname(String(fileName || '')).toLowerCase().replace(/^\./, '');
@@ -11,6 +12,7 @@ async function parseDocument(buffer, fileName) {
   const ext = extOf(fileName);
   if (ext === 'epub') return parseEpub(buffer);
   if (ext === 'md' || ext === 'markdown') return parseMarkdown(buffer, fileName);
+  if (ext === 'docx') return parseDocx(buffer, fileName);
   throw new Error(`Unsupported file type: .${ext || '(none)'}`);
 }
 
