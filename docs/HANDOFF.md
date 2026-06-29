@@ -359,8 +359,8 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     can double-extract — shared with the EPUB `htmlToBlocks` path; don't patch it (regresses EPUB). Flat
     lists fine. (e) **Branch `phase-4-markdown` is verified but NOT merged to `master`** — left for the
     user. (f) macOS still unbuilt (Phase 1 carryover).
-- [x] **Phase 4 (part 2) — DOCX reading: built & planner-verified (2026-06-29, Windows; branch
-  `phase-4-docx`).** Built by a fresh builder (7 commits, `67b3ea8` → `b9ecbe0`, off `master`); planning
+- [x] **Phase 4 (part 2) — DOCX reading: built, planner-verified, MERGED & user-confirmed (2026-06-29,
+  Windows).** Built by a fresh builder (7 commits, `67b3ea8` → `b9ecbe0`, off `master`); planning
   session **independently re-verified** — re-ran the full unit suite, **machine-ran the smoke on the real
   Electron runtime, read every diff, and listed the packaged asar — not taken on "looks good."** **The user
   can now drop a Word `.docx` draft onto the shelf and listen to it exactly like an EPUB/Markdown book —
@@ -389,14 +389,18 @@ runs on Windows 11 + macOS (MacBook Pro M5).
       `asar list` confirms `src\parse\docx.js`, `src\parse\blocks-to-chapters.js`, `src\parse\index.js`,
       `src\parse\markdown.js`, and the **mammoth subtree (198 entries)** all ship — and **0 `.node` files in
       mammoth** → pure-JS, no `asarUnpack` needed (unlike onnxruntime).
-  - **Honest caveats / still manual:** (a) **voice quality on a real `.docx` draft is ears-only** — the
-    user should listen to one of their own Word drafts. (b) **Add-button native dialog** can't be
-    smoke-driven (OS dialog); the picker-filter change is code-only — drag-drop is the automated path. (c)
-    resume/finished/remove/persist for a docx book are covered **structurally** (identical `Document` shape,
-    zero new reader/library code) rather than re-tested docx-specifically — by design. (d) the stored copy
-    of a `.docx` is still written as `original.epub` in its hash-keyed book folder (`library.js` hardcodes
-    that name) — harmless, same as Markdown. (e) **Branch `phase-4-docx` is verified but NOT merged to
-    `master`** — left for the user. (f) macOS still unbuilt (Phase 1 carryover).
+  - **✅ Merged to `master` (2026-06-29):** clean fast-forward (`5685f08` tip), `phase-4-docx` deleted,
+    113/113 re-verified on the merged `master`. The packaged `dist/Reader-0.1.0-portable.exe` (built 12:26)
+    already contains this code — **planner content-verified the shipping source in the asar is byte-identical
+    to `master`** (CRLF-only diffs); no rebuild needed.
+  - **✅ User-confirmed (2026-06-29): ran the build, DOCX "works well"** on a real Word doc — import,
+    chapters-from-headings, narration/highlight all good. Closes the listen-pass gate.
+  - **Honest caveats / still manual:** (a) **Add-button native dialog** can't be smoke-driven (OS dialog);
+    the picker-filter change is code-only — drag-drop is the automated path. (b) resume/finished/remove/persist
+    for a docx book are covered **structurally** (identical `Document` shape, zero new reader/library code)
+    rather than re-tested docx-specifically — by design. (c) the stored copy of a `.docx` is still written as
+    `original.epub` in its hash-keyed book folder (`library.js` hardcodes that name) — harmless, same as
+    Markdown. (d) macOS still unbuilt (Phase 1 carryover).
   - **Pre-existing npm advisories (builder follow-up note, accepted):** the 10 high-severity advisories npm
     reports are **NOT from mammoth** (its subtree — jszip/xmlbuilder/lop — is clean) — they're pre-existing
     in `electron` (≤39.8.4) and `tar` (via electron-builder). The only fixes are `--force` breaking majors
@@ -476,11 +480,11 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:49** (packaged `app.js` confirmed to carry all
    22 ids) — replace old copies. *(US male is only 3 voices — an inherent Kokoro limit, recorded in the
    design.)*
-8. **✅ Phase 4 (part 2) — DOCX reading: BUILT & planner-verified (2026-06-29; branch `phase-4-docx`,
-   NOT merged).** 113/113 unit + smoke (machine-run) green, package gate passed (mammoth 198 entries, 0
-   native binaries). See the "What's done" Phase 4 (part 2) entry above. **Remaining user action:** merge
-   `phase-4-docx` → `master` + a listen-pass on a real `.docx` draft (voice quality is ears-only). The
-   original planning docs (for reference):
+8. **✅ Phase 4 (part 2) — DOCX reading: BUILT, planner-verified, MERGED to `master` & user-confirmed
+   (2026-06-29).** 113/113 unit + smoke (machine-run) green, package gate passed (mammoth 198 entries, 0
+   native binaries), clean fast-forward merge (`5685f08`), and the **user ran the build and confirmed DOCX
+   "works well"** on a real Word doc. See the "What's done" Phase 4 (part 2) entry above. No remaining
+   action. The planning docs (for reference):
    - [`plans/2026-06-28-docx-reading-design.md`](./plans/2026-06-28-docx-reading-design.md) — the
      decisions/why. **mammoth** (pure-JS) converts `.docx`→HTML, Word Heading 1–6 styles → `<h1–h6>`;
      reuse `htmlToBlocks`; **extract a shared `blocksToChapters` helper** from `markdown.js` that both
@@ -492,10 +496,11 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      `sample.docx` fixture (script self-checks mammoth emits `<h1>`); `parseDocx`; dispatcher route;
      picker/copy; smoke line; package gate. Baseline **103 tests**; target ~113. **Hand to a fresh
      builder (Sonnet 4.6) on branch `phase-4-docx`.**
-   - **Other still-open candidates** (all Windows; macOS still deferred): the **dtype follow-up** (HIGH
-     VALUE latency win, plan ready, gated on an M5 measurement); **pronunciation overrides** (the other
-     logged Phase 4 item); app **rename** (open question below); an NSIS installer if the launch trim
-     wasn't enough.
+   - **▶ NEXT — still-open candidates, no direction chosen yet** (all Windows; macOS still deferred): the
+     **dtype follow-up** (HIGH VALUE latency win, plan ready at [`plans/dtype-validate-and-swap.md`](./plans/dtype-validate-and-swap.md),
+     gated on an M5 measurement); **pronunciation overrides** (the last logged Phase 4 item — no plan yet);
+     app **rename** (open question below); an NSIS installer if the launch trim wasn't enough. **Pick one
+     with the user before planning.**
 9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
