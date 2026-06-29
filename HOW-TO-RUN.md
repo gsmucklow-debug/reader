@@ -4,11 +4,14 @@ No terminal needed. Just open one file.
 
 ## Windows 11
 1. Open the `dist` folder.
-2. Double-click **`Reader-0.1.0-portable.exe`**.
-3. The app opens. Drag an `.epub` book onto the window, or click **Add book**.
+2. Double-click **`Reader-0.1.0-setup.exe`**.
+3. Follow the short install wizard (you can pick a folder — no admin password needed).
+4. Launch **Reader** from the **Desktop** shortcut or the **Start menu**, then drag an
+   `.epub` book onto the window, or click **Add book**.
 
-That single `.exe` is the whole app — nothing to install. You can copy it
-anywhere (Desktop, a USB stick) and double-click it there.
+The first time Windows may show a SmartScreen warning (the app isn't code-signed):
+click **More info → Run anyway**. You only do this once. Installing once means the app
+opens fast every time after — it no longer unpacks itself on each launch.
 
 ## macOS (Apple Silicon — M-series)
 > The Mac build has to be produced **on a Mac** (see HANDOFF for why), so it

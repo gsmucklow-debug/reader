@@ -406,6 +406,34 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     in `electron` (≤39.8.4) and `tar` (via electron-builder). The only fixes are `--force` breaking majors
     that change the runtime/packager under the whole app → a dedicated branch with its own smoke + manual
     verification, not folded into this feature. Left untouched here.
+- [x] **NSIS installer — built & planner-verified (2026-06-29, Windows; branch `nsis-installer`, NOT
+  merged).** Brainstormed/decided with the user, design
+  [`plans/2026-06-29-nsis-installer-design.md`](./plans/2026-06-29-nsis-installer-design.md), plan
+  [`plans/phase-nsis-installer.md`](./plans/phase-nsis-installer.md). **The Windows build is now an
+  assisted install wizard instead of a self-extracting `portable.exe` — so the app installs once and opens
+  fast every launch (closes the launch-speed root cause the binary trim only mitigated).** Build-config
+  only; **no application source touched.**
+  - **What changed:** `package.json` `build.win.target` `portable` → `nsis`, plus a `build.nsis` block:
+    `oneClick:false` (assisted wizard), `perMachine:false` (current-user, **no admin/UAC**),
+    `allowToChangeInstallationDirectory:true`, Desktop + Start-menu shortcuts, `runAfterFinish:false`,
+    **`deleteAppDataOnUninstall:false`** (library/progress survive uninstall/upgrade), artifact
+    `Reader-${version}-setup.exe`. NSIS auto-removes a prior version on upgrade.
+  - **Why it's safe:** NSIS wraps the **same `win-unpacked/` tree** the portable target wrapped — delivery
+    changes, payload doesn't. `app.getPath('userData')` (= `%APPDATA%\Reader`, where library/clips/
+    `settings.json` live) is **install-independent and identical to what portable used** → existing books +
+    reading progress carry over untouched.
+  - **Verified by the planner (drove it task-by-task this session):**
+    - `npm run dist:win` → `target=nsis oneClick=false perMachine=false`, produced
+      **`dist/Reader-0.1.0-setup.exe`** (262 MB) **and** `dist/win-unpacked/` (stale `portable.exe`
+      deleted).
+    - **Package gate:** `node test/manual/verify-packaged.js` → offline synth **`201644 bytes @ 24000 Hz`**
+      (model + onnx-unpacked resolve in the shipped tree).
+    - Regression nets unperturbed: `npm test` → **113/113**, `npm run smoke` → **SMOKE OK**.
+  - **Honest caveats / user's manual gate (cannot be automated):** (a) **running the wizard** — folder
+    pick, no UAC prompt, Desktop/Start-menu shortcuts appear, app launches + reads a book. (b)
+    **upgrade-preserves-library** — install → add a book → rebuild → reinstall over it → book + progress
+    still there. (c) First-run **SmartScreen** warning is expected (unsigned, same as the portable exe). (d)
+    **Branch `nsis-installer` is verified but NOT merged to `master`** — left for the user.
 
 ---
 
@@ -465,9 +493,9 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    Trimmed to the target binary → **`app.asar.unpacked` 231 MB → 39 MB** (~192 MB less to extract/scan
    per launch); offline-synth gate re-passed (`201644 bytes @ 24000 Hz`). See the onnxruntime gotcha for
    the exact `files` excludes. **Fresh `dist/Reader-0.1.0-portable.exe` rebuilt 2026-06-28 20:34 with the
-   trim — replace any old Desktop/USB copies.** **Root cause not fully closed:** `portable` still
-   re-extracts each launch; the structural fix (→ **NSIS installer**) is **deferred by user decision
-   (2026-06-28)** — revisit only if launch still feels slow.
+   trim — replace any old Desktop/USB copies.** **✅ Root cause now CLOSED (2026-06-29):** the structural
+   fix landed — the build switched `portable` → **NSIS installer** (extract once at install, not on every
+   launch). See the "NSIS installer" entry in "What's done" (branch `nsis-installer`, not yet merged).
 7. **✅ Voice variety: picker expanded 8 → ~22 English voices (2026-06-28; `7102f3d`).** User wanted
    more timbres. Restructured `VOICES` (`app.js`) into 4 groups (US/UK × Female/Male), best-first, **★ on
    the A/B standouts** (Heart, Bella, Nicole, Emma); `.voice-list` is now scrollable (`max-height:50vh`).
@@ -499,8 +527,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
    - **▶ NEXT — still-open candidates, no direction chosen yet** (all Windows; macOS still deferred): the
      **dtype follow-up** (HIGH VALUE latency win, plan ready at [`plans/dtype-validate-and-swap.md`](./plans/dtype-validate-and-swap.md),
      gated on an M5 measurement); **pronunciation overrides** (the last logged Phase 4 item — no plan yet);
-     app **rename** (open question below); an NSIS installer if the launch trim wasn't enough. **Pick one
-     with the user before planning.**
+     app **rename** (open question below). *(NSIS installer — done 2026-06-29, branch `nsis-installer`, see
+     "What's done".)* **Pick one with the user before planning.**
 9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
    2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
    right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
@@ -539,6 +567,10 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   is a new per-OS backend with a mandatory CPU-fallback, for **zero measured speedup** here. The lever is
   the CPU dtype, not the device. This **confirms** the CPU-only decision above.
 - Library with covers + auto-resume from the start (Phase 3). Bookmarks/notes deferred.
+- **Windows packaging: `portable` → NSIS installer (2026-06-29)** — extract once at install fixes the slow
+  cold launch (portable self-extracted its whole payload every launch). Assisted wizard, per-user (no
+  admin/UAC), Desktop + Start-menu shortcuts, library/progress preserved (`deleteAppDataOnUninstall:false`).
+  Was deferred 2026-06-28, taken 2026-06-29.
 - PDF out of scope.
 - Three reading view modes: single page, two-page, continuous autoscroll (~¾-up highlight).
 - Pronunciation overrides via "sounds-like" respelling, per-book + global.
@@ -578,7 +610,8 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   unit-tested + spot-checked on real prose (6089 sentences, 0 bad splits). Not `Intl.Segmenter`
   (inconsistent on abbreviations across engines).
 - **Tests = Node's built-in `node:test`** (no Jest/Mocha). **GUI smoke = Playwright `_electron`.**
-- **Packaging = electron-builder**: Windows `portable` (single double-click `.exe`), macOS `dmg` arm64.
+- **Packaging = electron-builder**: Windows **`nsis`** (assisted install wizard, per-user — was `portable`
+  until 2026-06-29), macOS `dmg` arm64.
 
 ## Tech chosen in Phase 2 (the voice stack)
 
@@ -668,10 +701,11 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
   platform-scoped `files` **merge** with the top-level list (don't replace) — confirmed src intact in the
   asar. **Don't widen these excludes to the asar JS deps** (`onnxruntime-web` 91 MB / `typescript` 23 MB /
   `@img`/sharp 20 MB are dead weight too, BUT `onnxruntime-web` is a **static `import`** in transformers'
-  `backends/onnx.js` — removing it breaks the engine; left alone deliberately). **Launch root cause not
-  fully fixed:** the `portable` target still re-extracts on every cold launch; the trim only makes each
-  extraction lighter. The structural fix (deferred by user 2026-06-28) is switching `portable` → an
-  **NSIS installer** (extract once at install) — revisit if launch still feels slow.
+  `backends/onnx.js` — removing it breaks the engine; left alone deliberately). **✅ Launch root cause now
+  CLOSED (2026-06-29):** the build switched `portable` → an **NSIS installer** (`build.win.target` +
+  `build.nsis` in `package.json`) — it extracts once at install, so launches no longer re-extract. The
+  trim is still worth keeping (smaller installer + smaller installed footprint). Branch `nsis-installer`,
+  not yet merged.
 - **utilityProcess WAV transfer:** send the bytes **in the message body** (`postMessage({…, wav})`),
   **not** in a transfer list — Electron's utilityProcess uses structured clone; a `[wav.buffer]`
   transfer-list arg makes `msg.wav` arrive `undefined`. (This bit us; the plan's first draft had it.)
