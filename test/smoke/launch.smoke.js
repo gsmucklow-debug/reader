@@ -24,6 +24,10 @@ const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'reader-smoke-'));
 function launch() {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE; // else electron acts as plain node (no GUI)
+  // Force the expressive server URL to a guaranteed-dead port: the "server unreachable ->
+  // Expressive disabled + hint" AC must be deterministic in CI, independent of whatever
+  // may or may not be listening on the real default (:8004) on the machine running smoke.
+  env.READER_EXPRESSIVE_URL = 'http://127.0.0.1:1';
   return electron.launch({ args: [ROOT, `--user-data-dir=${USERDATA}`], env });
 }
 
@@ -504,30 +508,20 @@ async function dropBook(win) {
   });
   await win.click('#pause-toggle button[data-pause="longer"]'); // non-default end-of-chapter pause
 
-  // Expressive GPU voice UI: the panel-open health probe (fired by the #voice-btn click
-  // above) has resolved by now — wait for it to settle either way, then check the AC
-  // that actually applies. This machine may or may not have a real Chatterbox server on
-  // localhost:8004 (a leftover spike server), so branch on the observed state instead of
-  // assuming "no server" — the important invariant is the segment's disabled state always
-  // matches the health probe's result.
+  // Expressive GPU voice UI: launch() points READER_EXPRESSIVE_URL at a guaranteed-dead
+  // port (127.0.0.1:1), so the panel-open health probe (fired by the #voice-btn click
+  // above) deterministically fails — proving the "server unreachable -> Expressive
+  // disabled with a hint" AC, independent of whatever may or may not be listening on the
+  // real default port on the machine running smoke.
   await win.waitForFunction(
-    () => document.getElementById('engine-hint').hidden !== undefined
-      && document.querySelector('#engine-toggle button[data-engine="expressive"]').disabled
-        === !document.getElementById('engine-hint').hidden,
+    () => document.querySelector('#engine-toggle button[data-engine="expressive"]')?.disabled === true,
     null, { timeout: 3000 },
-  ).catch(() => {}); // best-effort settle wait; the assertions below are the real check
-  const health = await win.evaluate(() => ({
-    disabled: document.querySelector('#engine-toggle button[data-engine="expressive"]').disabled,
-    hintHidden: document.getElementById('engine-hint').hidden,
-  }));
-  assert.strictEqual(health.disabled, health.hintHidden === false, 'expressive segment disabled state must match the hint visibility');
-  if (health.disabled) {
-    console.log('  ✓ expressive engine segment disables with a hint (no server reachable on this machine)');
-  } else {
-    console.log('  ✓ expressive engine segment stays enabled (a real server answered on localhost:8004)');
-  }
+  );
+  assert.ok(await win.$('#engine-hint:not([hidden])'), 'engine hint should show when the expressive server is unreachable');
+  console.log('  ✓ expressive engine segment disables with a hint when the server is unreachable');
 
-  // Drive the engine switch via the test-only seam (mirrors how a restored persisted
+  // The segment is legitimately disabled right now (per the AC above), so a real click on
+  // it is correctly a no-op. Drive the engine switch via the test-only seam (mirrors how a restored persisted
   // setting would apply — applySettings sets state directly, no reload/button click) so
   // this proves the voice list / sliders / persistence regardless of server reachability
   // or whether the segment happens to be enabled on this machine.
