@@ -144,15 +144,20 @@ input[type="range"] { accent-color: var(--accent); }
   color: var(--ink-soft);
   margin: 6px 0 2px;
 }
-.voice-row { display: flex; align-items: stretch; gap: 6px; }
+.voice-row { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
 .voice-pick {
   flex: 1 1 auto;
+  min-width: 0;               /* let the button shrink so a long name can't overflow the cell */
+  overflow: hidden;
+  overflow-wrap: anywhere;    /* break long unbroken tokens (e.g. Nathaniel_British_suspense_male) */
   text-align: left;
   padding: 6px 12px;
   font-size: 0.95rem;
   line-height: 1.2;
   color: var(--ink);
 }
+/* Keep the small action buttons (▶ ✎ ✕) from being shrunk away by a long name. */
+.voice-preview, .voice-rename, .voice-remove { flex-shrink: 0; }
 .voice-pick.voice-top { font-weight: 600; }
 .voice-pick.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .voice-preview { flex: 0 0 auto; padding: 6px 10px; font-size: 0.85rem; color: var(--ink); }

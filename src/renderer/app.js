@@ -750,10 +750,14 @@ function markActiveExpressiveVoice() {
 // (persisted in settings as `expressiveMyVoices`). Reader never queries the server's
 // reference_audio/ dir, so any other clones on the server stay invisible until explicitly added
 // here — an intentional curation boundary (user decision 2026-07-01).
-// A My Voices row's display label: the user's local alias if set, else the bare filename.
+// A My Voices row's display label: the user's local alias if set, else the filename with the
+// extension dropped and underscores/hyphens shown as spaces (matches the server's own display
+// convention, and lets long names wrap at spaces instead of overflowing). The underlying
+// filename (the synth id) is unchanged — only the label differs.
 function myVoiceLabel(filename) {
   const alias = state.expressiveVoiceNames && state.expressiveVoiceNames[filename];
-  return (alias && alias.trim()) || filename.replace(/\.(wav|mp3)$/i, '');
+  if (alias && alias.trim()) return alias.trim();
+  return filename.replace(/\.(wav|mp3)$/i, '').replace(/[_-]+/g, ' ');
 }
 function renderMyVoicesGroup() {
   const h = document.createElement('div');
