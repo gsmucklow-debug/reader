@@ -436,6 +436,45 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     add a book → rebuild → reinstall over it → book + progress still there (the code guarantees it via the
     install-independent userData path, but never exercised end-to-end). (b) First-run **SmartScreen**
     warning is expected (unsigned, same as the portable exe).
+- [x] **Expressive GPU voice — spike + in-app UI: built, planner-verified, MERGED & user-confirmed
+  (2026-07-01, Windows).** The user felt Kokoro's prosody was flat and asked about Chatterbox.
+  Researched (Kokoro is the expressiveness ceiling of the CPU/ONNX/JS class; real expressiveness needs a
+  GPU model), brainstormed, and decided with the user: an **optional** expressive voice via a **local
+  GPU server** (Chatterbox), Reader talking to it over `localhost` through the existing
+  `reader.synthesize` seam — **default stays Kokoro-CPU-offline**, this is purely opt-in. Design:
+  [`plans/2026-07-01-expressive-gpu-voice-design.md`](./plans/2026-07-01-expressive-gpu-voice-design.md).
+  - **Spike (planner-built) proved the value by ear:** stood up the off-the-shelf
+    [`devnen/Chatterbox-TTS-Server`](https://github.com/devnen/Chatterbox-TTS-Server) on the user's
+    **RTX 5070 Ti (Blackwell, CUDA 12.8/cu128, Python 3.10 portable)**; wired an alternate backend
+    (`src/main/expressive-tts.js`, `/tts` predefined-voice mode) behind the seam with a **Kokoro
+    fallback on any failure** and an engine-aware clip-cache key (Kokoro clips unchanged). Setup guide:
+    [`plans/spike-expressive-gpu-setup.md`](./plans/spike-expressive-gpu-setup.md). **Pacing quirk
+    solved:** Chatterbox's `cfg_weight` (lower = calmer, ~0.3) is the natural pace lever; `speed_factor`
+    is a post time-stretch (leave at 1.0 — dropping it causes echoey artifacts). User's tuned config:
+    `exaggeration 0.5 / cfg 0.3 / temperature 0.75 / speed_factor 1.0`.
+  - **In-app UI (Sonnet builder, planner-verified):** Voice-panel **engine switch** (Offline Kokoro ⇄
+    Expressive GPU), **all 28 server voices grouped Male/Female (all US)**, **four generation sliders**
+    with the tuned defaults, health-check-driven disable+hint when the server's down, and **six new
+    global `settings.json` keys** (`ttsEngine`/`expressiveVoice`/`exaggeration`/`cfgWeight`/
+    `temperature`/`speedFactor`). Routing is **opts-driven** (renderer sends `engine` per call, never an
+    env var) so the default path is untouched. Plan:
+    [`plans/phase-expressive-voice-ui.md`](./plans/phase-expressive-voice-ui.md).
+  - **Independently re-verified by the planner** (re-ran everything, read every diff — not "looks
+    good"): `npm test` → **126/126**; `npm run smoke` → **SMOKE OK** (Kokoro narration + markdown/docx
+    checks unchanged; new assertions: unreachable→disabled+hint, engine/voice/sliders render+apply, all
+    6 keys persist across restart). Confirmed the two smoke edits **strengthen, not weaken** it, the
+    sacred DOM contract holds (only the voice-*list* innerHTML is rebuilt, never `readingEl`), and the
+    `window.__test_setEngine` seam mirrors the existing `highlightSentence`/`goToPageContaining` seams.
+  - **✅ Merged to `master` (2026-07-01):** clean fast-forward (`2c778df` tip), branch deleted, 126/126
+    re-verified on merged master. **✅ User-confirmed by ear: "sounds good"** in the real app.
+  - **Honest caveats / still open:** (a) **requires the user to run the Chatterbox server manually** —
+    the **companion installer** (auto-launch, double-clickable, no-terminal) is designed-but-not-built
+    (Phase 2b, in the design doc). On `master` today the Expressive option shows but is disabled unless
+    the server is up (graceful). (b) **Voice cloning** is designed + queued (next):
+    [`plans/2026-07-01-voice-cloning-design.md`](./plans/2026-07-01-voice-cloning-design.md) —
+    BYO-reference, file-picker, `voice_mode:'clone'`; **guardrail: never bundle/ship cloned voices**
+    (personal use only; celebrity clones are the user's private files). (c) **Windows/NVIDIA only** so
+    far — the M5 path is a *different runtime* (MLX/CoreML), not a port; deferred with the Mac build.
 
 ---
 
@@ -558,6 +597,14 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 ## Decisions log (so they're not re-litigated)
 
 - Local neural voice (Kokoro), not cloud — free/offline/private. Cloud premium voice deferred.
+- **Optional expressive GPU voice via a SEPARATE local server (2026-07-01).** Kokoro is the
+  expressiveness ceiling of the CPU/ONNX/JS class; the user wanted more expressive narration of their
+  own drafts. Added an **opt-in** expressive engine (Chatterbox) that runs in a **separate local GPU
+  process** Reader talks to over `localhost` — default stays Kokoro-CPU-offline. **This does NOT
+  contradict the CPU-only / GPU-dead-end decisions below:** those are about running *Kokoro* in-process
+  via `onnxruntime-node`'s DirectML (which fails at ConvTranspose) — a *separate* CUDA/PyTorch process
+  is a different thing entirely. Windows/NVIDIA-first; the M5 gets a different runtime (MLX/CoreML)
+  later, sharing only the localhost contract. Cloning is BYO-reference only, never bundled/shipped.
 - Sentence-level highlighting (not word-level) → per-sentence clips → no alignment needed.
 - Electron (not Tauri) → simplest path to all-JS, double-clickable, cross-platform.
 - CPU (not GPU) → identical behavior on Win/Mac; model is fast enough **on the right dtype** (the
