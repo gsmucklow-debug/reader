@@ -124,9 +124,14 @@ function showDocument(doc, fileName) {
       }),
     makeClip,
     view: ReaderView,
-    prefetchAhead: 3,   // synth runs ~0.4x realtime, so 3 stays comfortably ahead during play
+    // Prefetch a deep cushion of upcoming clips. Kokoro (CPU) runs ~0.4x realtime and never
+    // needs this, but the expressive GPU engine has slower + variable per-sentence latency, so a
+    // deeper buffer rides over a slow (long) sentence without an audible gap between clips. Harmless
+    // for Kokoro (its utilityProcess just queues them). The server processes concurrent requests
+    // serially, so the buffer fills during the short sentences and cushions the long ones.
+    prefetchAhead: 8,
     prefetchBehind: 1,  // keep the prior sentence warm so back-a-sentence is instant
-    maxClips: 48,       // retain more decoded clips (~18MB) so rewind targets stay instant
+    maxClips: 64,       // retain enough decoded clips for the deeper prefetch + rewind targets
     onStateChange: updatePlayButton, // keep #play-pause in sync (esp. auto-stop at book end)
     endChapterPauseMs,               // live: rest beat when narration crosses into a new chapter
   });
