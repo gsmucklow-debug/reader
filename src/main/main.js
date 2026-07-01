@@ -16,6 +16,16 @@ const { synthesizeRemote, wavSampleRate } = require('./expressive-tts');
 // the spike only; a Voice-panel toggle + companion installer are Phase 2 (if the by-ear gate passes).
 const EXPRESSIVE_URL = process.env.READER_EXPRESSIVE_URL || null;
 const EXPRESSIVE_VOICE = process.env.READER_EXPRESSIVE_VOICE || undefined; // a predefined_voice_id
+// Generation params (Chatterbox levers). Defaults = the by-ear-tuned config the user landed on
+// (calm pacing via low cfg_weight). Env-overridable for spike tuning; the Voice-panel UI will
+// drive these in Phase 2. A number env → override; leave unset to keep the default.
+const envNum = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+const EXPRESSIVE_PARAMS = {
+  exaggeration: envNum(process.env.READER_EXPRESSIVE_EXAGGERATION, 0.5),
+  cfgWeight: envNum(process.env.READER_EXPRESSIVE_CFG, 0.3),
+  temperature: envNum(process.env.READER_EXPRESSIVE_TEMPERATURE, 0.75),
+  speedFactor: envNum(process.env.READER_EXPRESSIVE_SPEED, 1.0),
+};
 
 let library = null;
 function getLibrary() {
@@ -217,11 +227,16 @@ ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
   // its clips never collide with Kokoro's. ANY failure (server down, CUDA error, timeout) falls
   // through to the in-process Kokoro engine below — narration must never break.
   if (EXPRESSIVE_URL) {
-    const cacheVoice = EXPRESSIVE_VOICE || 'default'; // stable key per chosen server voice
+    const p = EXPRESSIVE_PARAMS;
+    // The cache key must fold in voice + every generation param, so changing any knob
+    // re-synthesizes rather than serving a stale clip. (speed is the Kokoro slider, unused
+    // here — Chatterbox pacing is cfg_weight/speed_factor.) Note: with temperature > 0 the
+    // server is non-deterministic; we cache the first sample and reuse it for consistency.
+    const cacheVoice = `${EXPRESSIVE_VOICE || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
     const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
     if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
     try {
-      const out = await synthesizeRemote({ text: normalized, voice: EXPRESSIVE_VOICE, url: EXPRESSIVE_URL });
+      const out = await synthesizeRemote({ text: normalized, voice: EXPRESSIVE_VOICE, params: p, url: EXPRESSIVE_URL });
       await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
       return { wav: out.wav, sampleRate: out.sampleRate };
     } catch (err) {

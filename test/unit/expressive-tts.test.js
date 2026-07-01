@@ -34,6 +34,28 @@ test('synthesizeRemote POSTs the sentence to /tts in predefined-voice mode', asy
   assert.strictEqual(sampleRate, 24000);
 });
 
+test('synthesizeRemote sends only the generation params that were provided', async () => {
+  let body;
+  const fetchImpl = async (_url, opts) => {
+    body = JSON.parse(opts.body);
+    return { ok: true, async arrayBuffer() { return fakeWav(24000).buffer; } };
+  };
+  await synthesizeRemote({
+    text: 'x', url: 'http://localhost:8004', fetchImpl,
+    params: { exaggeration: 0.5, cfgWeight: 0.3, temperature: 0.75, speedFactor: 1.0 },
+  });
+  assert.strictEqual(body.exaggeration, 0.5);
+  assert.strictEqual(body.cfg_weight, 0.3);   // mapped to the server's snake_case name
+  assert.strictEqual(body.temperature, 0.75);
+  assert.strictEqual(body.speed_factor, 1.0);
+
+  // Omitted params must NOT appear (server keeps its own config.yaml defaults).
+  await synthesizeRemote({ text: 'x', url: 'http://localhost:8004', fetchImpl, params: { cfgWeight: 0.4 } });
+  assert.strictEqual(body.cfg_weight, 0.4);
+  assert.ok(!('exaggeration' in body));
+  assert.ok(!('temperature' in body));
+});
+
 test('synthesizeRemote throws on a non-ok response (so the caller can fall back to Kokoro)', async () => {
   const fetchImpl = async () => ({ ok: false, status: 500, async text() { return 'CUDA OOM'; } });
   await assert.rejects(

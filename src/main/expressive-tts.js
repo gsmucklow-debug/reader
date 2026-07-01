@@ -9,9 +9,10 @@
 // `fetchImpl` is injected so this edge is unit-testable with a fake (mirroring how audio/IPC
 // are the injected edges elsewhere). In the app it defaults to the global fetch.
 
-async function synthesizeRemote({ text, voice, url, timeoutMs = 60000, fetchImpl }) {
+async function synthesizeRemote({ text, voice, params, url, timeoutMs = 60000, fetchImpl }) {
   const doFetch = fetchImpl || globalThis.fetch;
   if (!doFetch) throw new Error('no fetch available for expressive TTS');
+  const p = params || {};
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -21,13 +22,20 @@ async function synthesizeRemote({ text, voice, url, timeoutMs = 60000, fetchImpl
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        // Curated-voice mode: `voice` is a predefined_voice_id (a .wav filename from the
+        // Predefined-voice mode: `voice` is a predefined_voice_id (a .wav filename from the
         // server's voices/ dir). Undefined → the server uses its own default voice.
         voice_mode: 'predefined',
         predefined_voice_id: voice || undefined,
         output_format: 'wav',
         split_text: false, // Reader already sends one sentence; don't let the server re-chunk.
         stream: false,     // whole clip back in one response (design invariant)
+        // Generation params (Chatterbox levers). Only send the ones provided so the server
+        // falls back to its own config.yaml defaults for anything omitted. cfg_weight is the
+        // natural pacing control (lower = slower); speed_factor is a post time-stretch (keep 1).
+        ...(p.exaggeration != null && { exaggeration: p.exaggeration }),
+        ...(p.cfgWeight != null && { cfg_weight: p.cfgWeight }),
+        ...(p.temperature != null && { temperature: p.temperature }),
+        ...(p.speedFactor != null && { speed_factor: p.speedFactor }),
       }),
       signal: controller.signal,
     });
