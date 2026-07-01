@@ -131,7 +131,9 @@ input[type="range"] { accent-color: var(--accent); }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
   gap: 4px 10px;
-  max-width: 960px;
+  /* Fill the full panel width (was capped at 960px, which bunched the voices on the left of a
+     wide screen and wasted the right half). auto-fill lays out as many 165px columns as fit. */
+  max-width: none;
   max-height: 64vh; overflow-y: auto; overflow-x: hidden; padding-right: 4px;
 }
 .voice-group {
