@@ -772,6 +772,26 @@ function renderMyVoicesGroup() {
     ren.textContent = '✎';
     ren.addEventListener('click', (e) => { e.stopPropagation(); openRenameVoicePopover(filename); });
     row.appendChild(ren);
+    // ✕ remove: drops the voice from Reader's local list only (the clip stays on the server —
+    // upload-only, no server delete). Lets the user clear a bad entry and re-add it.
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'voice-remove';
+    rm.title = 'Remove from My Voices';
+    rm.setAttribute('aria-label', `Remove ${label} from My Voices`);
+    rm.textContent = '✕';
+    rm.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.myVoices = state.myVoices.filter((f) => f !== filename);
+      delete state.expressiveVoiceNames[filename];
+      if (state.expressiveVoiceMode === 'clone' && state.expressiveVoice === filename) {
+        setExpressiveVoice('Axel.wav', 'predefined'); // deselect a removed voice → safe default
+      } else {
+        saveSettings();
+      }
+      buildExpressiveVoiceList();
+    });
+    row.appendChild(rm);
     expressiveVoiceListEl.appendChild(row);
   }
   const addRow = document.createElement('div');
@@ -829,17 +849,24 @@ function openAddVoicePopover() {
         .replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'my-voice';
       const uploadName = `${safeName}${ext}`;
       setStatus('Uploading…', false);
-      await window.reader.expressiveUploadReference(picked.bytes, uploadName);
+      const res = await window.reader.expressiveUploadReference(picked.bytes, uploadName);
+      // Use the filename the SERVER actually saved (it sanitizes spaces->underscores etc.) — the
+      // name we sent may differ, and selecting the wrong name 404s on the server -> Kokoro fallback.
+      const savedName = (res && res.savedName) || uploadName;
       // Upload-only + local: record the voice in Reader's own persisted list (dedup), then
       // re-render and select it. Reader never re-reads the server folder to discover voices.
-      if (!state.myVoices.includes(uploadName)) state.myVoices.push(uploadName);
+      if (!state.myVoices.includes(savedName)) state.myVoices.push(savedName);
+      // If the user typed a friendlier display name, keep it as a local alias on the saved file.
+      if (typedName && typedName !== savedName.replace(/\.(wav|mp3)$/i, '')) {
+        state.expressiveVoiceNames[savedName] = typedName;
+      }
       buildExpressiveVoiceList();
-      setExpressiveVoice(uploadName, 'clone'); // persists myVoices + selection via saveSettings
+      setExpressiveVoice(savedName, 'clone'); // persists myVoices + selection via saveSettings
       markActiveExpressiveVoice();
       closeAddVoicePopover();
     } catch (e) {
       console.warn('[Reader] add-voice failed:', e);
-      setStatus('Could not add this voice — check the server and try again.', true);
+      setStatus(e && e.message ? `Couldn't add: ${e.message}` : 'Could not add this voice — check the server.', true);
     }
   });
   expressiveSectionEl.appendChild(wrap);

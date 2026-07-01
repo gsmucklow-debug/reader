@@ -469,11 +469,20 @@ ipcMain.handle('expressive:uploadReference', async (_evt, bytes, fileName, url) 
     // `files: List[UploadFile]`); 'file' 422s with "field required: files".
     fd.append('files', new Blob([Buffer.from(bytes)]), fileName);
     const res = await fetch(`${base.replace(/\/$/, '')}/upload_reference`, { method: 'POST', body: fd });
+    const data = await res.json().catch(() => null);
     if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new Error(`upload failed (${res.status}): ${detail.slice(0, 200)}`);
+      // Surface the server's real per-file reason (e.g. "duration exceeds max", decode error).
+      const detail = (data && data.errors && data.errors[0] && data.errors[0].error)
+        || (data ? JSON.stringify(data).slice(0, 200) : `HTTP ${res.status}`);
+      throw new Error(detail);
     }
-    return { ok: true };
+    // CRITICAL: the server SANITIZES the filename on save (spaces -> underscores, unsafe chars
+    // stripped), so the name it actually stored — returned in `uploaded_files` — is the ONLY name
+    // that will resolve at clone time. Return it so the renderer selects/persists THAT, not the
+    // name we sent (which would 404 on the server and silently fall back to Kokoro).
+    const savedName = data && Array.isArray(data.uploaded_files) && data.uploaded_files[0];
+    if (!savedName) throw new Error('upload reported no saved file');
+    return { ok: true, savedName };
   } catch (err) {
     throw new Error(err && err.message ? err.message : 'reference upload failed');
   }
