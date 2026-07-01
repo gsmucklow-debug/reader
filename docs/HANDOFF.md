@@ -578,6 +578,20 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 - Three reading view modes: single page, two-page, continuous autoscroll (~¾-up highlight).
 - Pronunciation overrides via "sounds-like" respelling, per-book + global.
 - All work with Claude (no Codex).
+- **Model selection by role (2026-07-01, researched via the `claude-api` skill).** Split the two roles
+  instead of running everything on Opus 4.8:
+  - **Builders / implementers** (execute a detailed TDD plan, well-scoped tasks) → **Claude Sonnet 5**
+    (`claude-sonnet-5`). It reaches "near-Opus quality on coding and agentic work" and supports the full
+    effort range incl. `xhigh`; at **$3/$15 per 1M ($2/$10 intro through 2026-08-31)** vs Opus 4.8's
+    $5/$25 it cuts cost ~40–60% on exactly the token-heavy role. Precedent: **Phase 3 + Phase 4
+    (Markdown/DOCX) were built by Sonnet 4.6 sessions and passed planner verification** — Sonnet 5 is a
+    strict upgrade over 4.6. Note: new tokenizer (~30% more tokens than 4.6 for the same text; per-token
+    price unchanged).
+  - **Planner / verifier, brainstorming, design, and the adversarial spec/quality review gates** → **keep
+    Opus 4.8** (`claude-opus-4-8`). These are judgment-heavy (this session caught the smart-quotes parse
+    bug and the round→floor pagination fix by *reading diffs*, not trusting reports) — that independent
+    verification is what makes a cheaper builder low-risk, so don't cheapen the net itself.
+  - Small mechanical/config edits (e.g. the NSIS swap) → Sonnet 5 or inline is fine.
 
 ---
 
