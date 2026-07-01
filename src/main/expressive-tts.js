@@ -70,6 +70,19 @@ function wavSampleRate(bytes) {
   return 24000;
 }
 
+// Build the clip-cache "voice" key for the expressive engine: folds in the mode ('predefined'
+// | 'clone') alongside the voice id + every generation param, so (a) changing any knob, or
+// flipping predefined<->clone, re-synthesizes rather than serving a stale clip, and (b) a
+// predefined_voice_id and a cloned reference_audio_filename that happen to share a name can
+// never collide on the same cache entry. Pulled out of main.js (which can't be require()'d
+// directly — it's the Electron app entry) so this is unit-testable, mirroring the
+// expressive-params.js "extracted for testability" pattern.
+function expressiveCacheVoice({ mode, voice, params }) {
+  const m = mode === 'clone' ? 'clone' : 'predefined';
+  const p = params || {};
+  return `${m}:${voice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
+}
+
 // Normalize the `GET /get_reference_files` response into a flat list of filenames (the
 // server's reference_audio_filename ids, usable directly as `voice` in clone mode). The
 // exact response shape isn't confirmed against a live server, so this defensively accepts
@@ -95,4 +108,4 @@ function parseReferenceList(data) {
     .filter((name) => typeof name === 'string' && name.length > 0);
 }
 
-module.exports = { synthesizeRemote, wavSampleRate, parseReferenceList };
+module.exports = { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice };

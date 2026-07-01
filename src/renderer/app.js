@@ -793,6 +793,7 @@ function openAddVoicePopover() {
   wrap.innerHTML = `
     <p class="add-voice-hint">Only add voices you have permission to use.</p>
     <p class="add-voice-hint">Best result: ~10–20s of clean, single-speaker speech.</p>
+    <p class="add-voice-hint">To remove a voice, delete its file on the Voice Engine server (no in-app remove yet).</p>
     <input type="text" class="add-voice-name" placeholder="Name this voice" maxlength="60" />
     <div class="add-voice-actions">
       <button type="button" class="add-voice-pick">Choose file…</button>

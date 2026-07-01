@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { synthesizeRemote, wavSampleRate, parseReferenceList } = require('../../src/main/expressive-tts');
+const { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice } = require('../../src/main/expressive-tts');
 
 // A minimal valid WAV header (44 bytes) with a given sample rate, for the fake server.
 function fakeWav(sampleRate) {
@@ -135,4 +135,32 @@ test('parseReferenceList tolerates garbage without throwing (empty My Voices, no
   assert.deepStrictEqual(parseReferenceList('nope'), []);
   assert.deepStrictEqual(parseReferenceList({}), []);
   assert.deepStrictEqual(parseReferenceList([1, null, {}, { other: 'x' }]), []);
+});
+
+const SAME_PARAMS = { exaggeration: 0.5, cfgWeight: 0.3, temperature: 0.75, speedFactor: 1.0 };
+
+test('expressiveCacheVoice: predefined and clone with the SAME filename produce DIFFERENT keys', () => {
+  const predefined = expressiveCacheVoice({ mode: 'predefined', voice: 'Alice.wav', params: SAME_PARAMS });
+  const clone = expressiveCacheVoice({ mode: 'clone', voice: 'Alice.wav', params: SAME_PARAMS });
+  assert.notStrictEqual(predefined, clone,
+    'a predefined voice and a cloned reference filename that happen to share a name must not collide');
+});
+
+test('expressiveCacheVoice: identical inputs produce the SAME key (same-words-same-voice still caches)', () => {
+  const a = expressiveCacheVoice({ mode: 'clone', voice: 'my-voice.wav', params: SAME_PARAMS });
+  const b = expressiveCacheVoice({ mode: 'clone', voice: 'my-voice.wav', params: { ...SAME_PARAMS } });
+  assert.strictEqual(a, b);
+});
+
+test('expressiveCacheVoice: defaults mode to predefined when omitted', () => {
+  assert.strictEqual(
+    expressiveCacheVoice({ voice: 'Axel.wav', params: SAME_PARAMS }),
+    expressiveCacheVoice({ mode: 'predefined', voice: 'Axel.wav', params: SAME_PARAMS }),
+  );
+});
+
+test('expressiveCacheVoice: changing a generation param changes the key', () => {
+  const a = expressiveCacheVoice({ mode: 'clone', voice: 'v.wav', params: SAME_PARAMS });
+  const b = expressiveCacheVoice({ mode: 'clone', voice: 'v.wav', params: { ...SAME_PARAMS, cfgWeight: 0.6 } });
+  assert.notStrictEqual(a, b);
 });

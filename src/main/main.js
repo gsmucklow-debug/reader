@@ -8,7 +8,7 @@ const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
-const { synthesizeRemote, wavSampleRate, parseReferenceList } = require('./expressive-tts');
+const { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
 
 // The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
@@ -235,13 +235,11 @@ ipcMain.handle('synthesize', async (_evt, {
     const p = mergeExpressiveParams({ exaggeration, cfgWeight, temperature, speedFactor });
     const url = serverUrl || EXPRESSIVE_DEFAULT_URL;
     const mode = expressiveVoiceMode === 'clone' ? 'clone' : 'predefined';
-    // The cache key must fold in mode + voice + every generation param, so changing any knob
-    // (or switching predefined<->clone) re-synthesizes rather than serving a stale clip, and a
-    // predefined id and a cloned reference filename that happen to share a name can't collide.
-    // (speed is the Kokoro slider, unused here — Chatterbox pacing is cfg_weight/speed_factor.)
-    // Note: with temperature > 0 the server is non-deterministic; we cache the first sample and
-    // reuse it for consistency.
-    const cacheVoice = `${mode}:${expressiveVoice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
+    // The cache key must fold in mode + voice + every generation param (see expressiveCacheVoice
+    // in expressive-tts.js, unit-tested) — speed is the Kokoro slider, unused here (Chatterbox
+    // pacing is cfg_weight/speed_factor). Note: with temperature > 0 the server is
+    // non-deterministic; we cache the first sample and reuse it for consistency.
+    const cacheVoice = expressiveCacheVoice({ mode, voice: expressiveVoice, params: p });
     const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
     if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
     try {
