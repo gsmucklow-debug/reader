@@ -154,6 +154,7 @@ input[type="range"] { accent-color: var(--accent); }
 .voice-pick.voice-top { font-weight: 600; }
 .voice-pick.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .voice-preview { flex: 0 0 auto; padding: 6px 10px; font-size: 0.85rem; color: var(--ink); }
+.voice-rename { flex: 0 0 auto; padding: 6px 10px; font-size: 0.85rem; color: var(--ink-soft); }
 
 /* "My Voices" (BYO-reference cloning): the ＋ Add button reuses the voice-pick footprint
    but reads as an action, not a selectable voice. */

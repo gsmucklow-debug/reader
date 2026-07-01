@@ -41,6 +41,10 @@ const state = {
   temperature: 0.75,
   speedFactor: 1.0,
   myVoices: [], // BYO-reference clone voices fetched from the server on panel-open (filenames)
+  // Local display-name aliases for My Voices (filename -> friendly name). The server has no
+  // rename endpoint, so renaming is a Reader-side label only; the underlying reference filename
+  // (the synth id) is unchanged. Persisted globally.
+  expressiveVoiceNames: {},
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -742,16 +746,29 @@ function markActiveExpressiveVoice() {
 // Dynamic (server-held) — rendered fresh each time buildExpressiveVoiceList() runs (boot,
 // with an empty list) and again after a successful references fetch/upload (panel-open,
 // or right after an upload completes) via refreshMyVoices() below.
+// A My Voices row's display label: the user's local alias if set, else the bare filename.
+function myVoiceLabel(filename) {
+  const alias = state.expressiveVoiceNames && state.expressiveVoiceNames[filename];
+  return (alias && alias.trim()) || filename.replace(/\.(wav|mp3)$/i, '');
+}
 function renderMyVoicesGroup() {
   const h = document.createElement('div');
   h.className = 'voice-group';
   h.textContent = 'My Voices';
   expressiveVoiceListEl.appendChild(h);
   for (const filename of state.myVoices) {
-    const label = filename.replace(/\.(wav|mp3)$/i, '');
-    expressiveVoiceListEl.appendChild(
-      makeVoiceRow(filename, label, `${label} — My Voices`, 'clone')
-    );
+    const label = myVoiceLabel(filename);
+    const row = makeVoiceRow(filename, label, `${label} — My Voices`, 'clone');
+    // ✎ rename: a Reader-side display alias (no server rename endpoint). Sits alongside the pick.
+    const ren = document.createElement('button');
+    ren.type = 'button';
+    ren.className = 'voice-rename';
+    ren.title = 'Rename';
+    ren.setAttribute('aria-label', `Rename ${label}`);
+    ren.textContent = '✎';
+    ren.addEventListener('click', (e) => { e.stopPropagation(); openRenameVoicePopover(filename); });
+    row.appendChild(ren);
+    expressiveVoiceListEl.appendChild(row);
   }
   const addRow = document.createElement('div');
   addRow.className = 'voice-row';
@@ -835,6 +852,41 @@ function openAddVoicePopover() {
   expressiveSectionEl.appendChild(wrap);
   addVoicePopoverEl = wrap;
   nameInput.focus();
+}
+
+// Rename a My Voices entry — a Reader-side display alias only (no server rename endpoint), so
+// the underlying reference filename / synth id is untouched. Blank name clears the alias
+// (reverts to the filename). Reuses the add-voice popover slot (one popover at a time).
+function openRenameVoicePopover(filename) {
+  closeAddVoicePopover();
+  const current = myVoiceLabel(filename);
+  const wrap = document.createElement('div');
+  wrap.className = 'add-voice-popover';
+  wrap.innerHTML = `
+    <p class="add-voice-hint">Rename this voice (display name only — the clip on the server is unchanged).</p>
+    <input type="text" class="add-voice-name" maxlength="60" />
+    <div class="add-voice-actions">
+      <button type="button" class="add-voice-save">Save</button>
+      <button type="button" class="add-voice-cancel">Cancel</button>
+    </div>
+  `;
+  const nameInput = wrap.querySelector('.add-voice-name');
+  nameInput.value = current;
+  const save = () => {
+    const typed = nameInput.value.trim();
+    if (typed) state.expressiveVoiceNames[filename] = typed;
+    else delete state.expressiveVoiceNames[filename]; // blank → revert to the filename
+    saveSettings();
+    closeAddVoicePopover();
+    buildExpressiveVoiceList(); // re-render with the new label; keeps the active mark
+  };
+  wrap.querySelector('.add-voice-cancel').addEventListener('click', closeAddVoicePopover);
+  wrap.querySelector('.add-voice-save').addEventListener('click', save);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+  expressiveSectionEl.appendChild(wrap);
+  addVoicePopoverEl = wrap;
+  nameInput.focus();
+  nameInput.select();
 }
 
 // ▶ preview: play a short sample in the given voice. Ducks narration first (the
@@ -970,6 +1022,7 @@ function gatherSettings() {
     cfgWeight: state.cfgWeight,
     temperature: state.temperature,
     speedFactor: state.speedFactor,
+    expressiveVoiceNames: state.expressiveVoiceNames,
   };
 }
 
@@ -1043,6 +1096,12 @@ function applySettings(s) {
     state.speedFactor = s.speedFactor;
     speedFactorSlider.range.value = String(s.speedFactor);
     speedFactorSlider.label.textContent = fmtParam(s.speedFactor);
+  }
+  if (s.expressiveVoiceNames && typeof s.expressiveVoiceNames === 'object') {
+    state.expressiveVoiceNames = s.expressiveVoiceNames;
+    // My Voices may already be rendered (boot builds an empty list; refreshMyVoices re-renders
+    // on panel-open) — a rebuild folds the restored aliases into the labels either way.
+    buildExpressiveVoiceList();
   }
   // Engine last, after voice/params are in state, so the visible section + toggle match
   // the restored engine right away (no reload — showEngineSection is CSS-only).
