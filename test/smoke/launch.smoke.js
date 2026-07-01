@@ -611,6 +611,16 @@ async function dropBook(win) {
   assert.strictEqual(persisted.speedFactor, '1.3', 'speedFactor should persist across restart');
   console.log('  ✓ expressive engine/voice/sliders persist across restart');
 
+  // Switch back to kokoro before the remaining checks: the plan's hard rule is that ALL
+  // prior smoke assertions (Kokoro narration, deterministic clip-cache checks) stay
+  // unaffected by this phase. Leaving ttsEngine='expressive' here would route the Phase 4
+  // markdown/docx narration-advance checks below through the expressive path (or its
+  // Kokoro fallback) instead of the default Kokoro path they're written to prove — this
+  // also exercises AC#2's "switching back shows the Kokoro list".
+  await win.evaluate(() => window.__test_setEngine('kokoro'));
+  assert.ok(await win.$('#kokoro-voice-section:not([hidden])'), 'Kokoro voice section un-hides when switching back from Expressive');
+  assert.ok(await win.$('#expressive-voice-section[hidden]'), 'Expressive voice section hides when switching back to Kokoro');
+
   // --- Phase 4: Markdown reading -------------------------------------------
   await win.click('#library-btn');
   await win.waitForSelector('body[data-screen="library"]', { timeout: 5000 });
