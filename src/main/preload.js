@@ -17,7 +17,12 @@ contextBridge.exposeInMainWorld('reader', {
 
   // Renderer calls reader.synthesize(text, { voice, speed }); we send ONE object so
   // the main handler can destructure { text, voice, speed } — keep this shape everywhere.
+  // For the expressive engine, opts also carries { engine, expressiveVoice, exaggeration,
+  // cfgWeight, temperature, speedFactor, serverUrl } — all forwarded as-is via the spread.
   synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
+
+  // Reachability probe for the optional expressive GPU server (Voice-panel engine toggle).
+  expressiveHealth: (url) => ipcRenderer.invoke('expressive:health', url),
 
   // Library (Phase 3)
   libraryList: () => ipcRenderer.invoke('library:list'),

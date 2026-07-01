@@ -9,23 +9,16 @@ const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
 const { synthesizeRemote, wavSampleRate } = require('./expressive-tts');
+const { mergeExpressiveParams } = require('./expressive-params');
 
-// SPIKE (2026-07-01): the optional expressive GPU voice. When READER_EXPRESSIVE_URL points at a
-// running Chatterbox server, synth routes there (cached under the 'chatterbox' engine) and falls
-// back to Kokoro on any failure. Unset → Reader is 100% the offline Kokoro default. Env-gated for
-// the spike only; a Voice-panel toggle + companion installer are Phase 2 (if the by-ear gate passes).
-const EXPRESSIVE_URL = process.env.READER_EXPRESSIVE_URL || null;
-const EXPRESSIVE_VOICE = process.env.READER_EXPRESSIVE_VOICE || undefined; // a predefined_voice_id
-// Generation params (Chatterbox levers). Defaults = the by-ear-tuned config the user landed on
-// (calm pacing via low cfg_weight). Env-overridable for spike tuning; the Voice-panel UI will
-// drive these in Phase 2. A number env → override; leave unset to keep the default.
-const envNum = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
-const EXPRESSIVE_PARAMS = {
-  exaggeration: envNum(process.env.READER_EXPRESSIVE_EXAGGERATION, 0.5),
-  cfgWeight: envNum(process.env.READER_EXPRESSIVE_CFG, 0.3),
-  temperature: envNum(process.env.READER_EXPRESSIVE_TEMPERATURE, 0.75),
-  speedFactor: envNum(process.env.READER_EXPRESSIVE_SPEED, 1.0),
-};
+// The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
+// opts-driven: the renderer sends `engine: 'expressive'` (+ params) per synthesize call, chosen
+// via the Voice-panel engine toggle and persisted in settings.json. Kokoro stays the default —
+// no engine (or any other value) falls straight through to the Kokoro path below. The env var
+// survives only as a fallback URL / dev override, never as the routing trigger, so the default
+// (no server, no env) smoke path is unaffected. Cached under the 'chatterbox' engine namespace
+// (clip-cache.test.js pins this tag) and falls back to Kokoro on any failure.
+const EXPRESSIVE_DEFAULT_URL = process.env.READER_EXPRESSIVE_URL || 'http://localhost:8004';
 
 let library = null;
 function getLibrary() {
@@ -93,7 +86,11 @@ function ttsRequest(payload, timeoutMs = 60000) {
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
-const SETTINGS_KEYS = ['font', 'theme', 'textSize', 'pageWidth', 'viewMode', 'voice', 'speed', 'endChapterPause'];
+const SETTINGS_KEYS = [
+  'font', 'theme', 'textSize', 'pageWidth', 'viewMode', 'voice', 'speed', 'endChapterPause',
+  // Expressive GPU voice (opt-in, global — same persistence model as voice/speed above).
+  'ttsEngine', 'expressiveVoice', 'exaggeration', 'cfgWeight', 'temperature', 'speedFactor',
+];
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -218,25 +215,30 @@ ipcMain.handle('pick-file-bytes', async () => {
 // Each (voice, speed, text) caches independently (clipKey includes all three).
 // res.wav is the typed array carried in the utilityProcess message; Electron
 // structured-clones it across the renderer IPC boundary, so return it as-is.
-ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
+ipcMain.handle('synthesize', async (_evt, {
+  text, voice, speed, engine, expressiveVoice, exaggeration, cfgWeight, temperature, speedFactor, serverUrl,
+}) => {
   voice = voice || 'af_heart';
   const normalized = normalizeTTS(text);
   clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
 
-  // Optional expressive GPU backend (spike). Cache under the 'chatterbox' engine namespace so
+  // Optional expressive GPU backend. Routed purely on the renderer-sent `engine` flag (never
+  // an env var) so a change of setting takes effect on the next call, and the default (no
+  // engine) path never touches this branch. Cache under the 'chatterbox' engine namespace so
   // its clips never collide with Kokoro's. ANY failure (server down, CUDA error, timeout) falls
   // through to the in-process Kokoro engine below — narration must never break.
-  if (EXPRESSIVE_URL) {
-    const p = EXPRESSIVE_PARAMS;
+  if (engine === 'expressive') {
+    const p = mergeExpressiveParams({ exaggeration, cfgWeight, temperature, speedFactor });
+    const url = serverUrl || EXPRESSIVE_DEFAULT_URL;
     // The cache key must fold in voice + every generation param, so changing any knob
     // re-synthesizes rather than serving a stale clip. (speed is the Kokoro slider, unused
     // here — Chatterbox pacing is cfg_weight/speed_factor.) Note: with temperature > 0 the
     // server is non-deterministic; we cache the first sample and reuse it for consistency.
-    const cacheVoice = `${EXPRESSIVE_VOICE || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
+    const cacheVoice = `${expressiveVoice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
     const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
     if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
     try {
-      const out = await synthesizeRemote({ text: normalized, voice: EXPRESSIVE_VOICE, params: p, url: EXPRESSIVE_URL });
+      const out = await synthesizeRemote({ text: normalized, voice: expressiveVoice, params: p, url });
       await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
       return { wav: out.wav, sampleRate: out.sampleRate };
     } catch (err) {
@@ -251,6 +253,23 @@ ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
   const bytes = res.wav;
   await clipCache.put(normalized, voice, speed, bytes);
   return { wav: bytes, sampleRate: res.sampleRate };
+});
+
+// Quick reachability probe for the optional expressive server, so the Voice panel can disable
+// the Expressive engine option (with a hint) instead of letting the user pick a dead backend.
+// Short timeout (~2s) since this runs on panel-open, on the UI thread's behalf.
+ipcMain.handle('expressive:health', async (_evt, url) => {
+  const base = url || EXPRESSIVE_DEFAULT_URL;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/get_predefined_voices`, { signal: controller.signal });
+    return { ok: !!(res && res.ok) };
+  } catch {
+    return { ok: false };
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
 app.whenReady().then(() => {
