@@ -9,26 +9,29 @@
 
 const path = require('node:path');
 
-// The proven launch command (validated via the Start Voice Engine.vbs, see the plan):
-//   <dir>\python_embedded\python.exe start.py --portable
-// cwd = dir; --portable skips the interactive install-mode prompt so it's safe to spawn
-// non-interactively/hidden.
+// Launch the server DIRECTLY with the embedded python:
+//   <dir>\python_embedded\python.exe server.py   (cwd = dir)
+// NOT `start.py --portable`: start.py is a LAUNCHER meant to be run by the *system* python (it
+// does env detection + sets up the embedded env), so running it with the embedded python breaks
+// it. server.py has `if __name__=='__main__': uvicorn.run(... port 8004)`, and start.py's own
+// launch_server() does exactly `Popen([embedded_python, server.py])`. The caller (main.js) must
+// also prepend python_embedded (+ its Scripts) to PATH so the native .pyd/DLLs are discoverable.
 function engineCommand(dir) {
   return {
     exe: path.join(dir, 'python_embedded', 'python.exe'),
-    args: ['start.py', '--portable'],
+    args: ['server.py'],
     cwd: dir,
   };
 }
 
-// A valid engine dir must contain both the embedded python interpreter and start.py.
+// A valid engine dir must contain both the embedded python interpreter and server.py (what we run).
 // `fsExistsFn` is injected (real callers pass fs.existsSync-shaped fn) so this is testable
 // without touching disk. A falsy/empty dir is invalid without even consulting fsExistsFn.
 function validateEngineDir(dir, fsExistsFn) {
   if (!dir) return false;
   const { exe, cwd } = engineCommand(dir);
-  const startPy = path.join(cwd, 'start.py');
-  return !!(fsExistsFn(exe) && fsExistsFn(startPy));
+  const serverPy = path.join(cwd, 'server.py');
+  return !!(fsExistsFn(exe) && fsExistsFn(serverPy));
 }
 
 // Poll `healthFn` every `intervalMs` until it resolves truthy or `timeoutMs` elapses.

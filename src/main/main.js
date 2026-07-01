@@ -354,9 +354,20 @@ function ensureVoiceEngineRunning(url, dir) {
         return { ok: false, reason: 'no-dir' };
       }
       const { exe, args, cwd } = engineCommand(useDir);
+      // Prepend the embedded python dir (+ Scripts) to PATH so the interpreter's native .pyd/DLLs
+      // (python3xx.dll, vcruntime, onnx/torch .pyd) load — start.py's launch_server does the same.
+      const embeddedDir = path.join(useDir, 'python_embedded');
+      const env = {
+        ...process.env,
+        PATH: `${embeddedDir}${path.delimiter}${path.join(embeddedDir, 'Scripts')}${path.delimiter}${process.env.PATH || ''}`,
+      };
+      // Log the server's stdout/stderr to a file so a failed start is DIAGNOSABLE, not a silent
+      // hang. Read it at userData/voice-engine.log if the engine won't come up.
+      let out = 'ignore';
+      try { out = fssync.openSync(path.join(app.getPath('userData'), 'voice-engine.log'), 'a'); } catch { out = 'ignore'; }
       let child;
       try {
-        child = spawn(exe, args, { cwd, windowsHide: true, stdio: 'ignore' });
+        child = spawn(exe, args, { cwd, windowsHide: true, env, stdio: ['ignore', out, out] });
       } catch (err) {
         return { ok: false, reason: 'start-failed' };
       }
@@ -378,7 +389,7 @@ function ensureVoiceEngineRunning(url, dir) {
       const ready = await pollUntilReady({
         healthFn: () => expressiveHealthCheck(url, 2000),
         intervalMs: 1500,
-        timeoutMs: 60000,
+        timeoutMs: 180000, // cold model load after a reboot can take a while — be generous
         sleepFn: sleep,
       });
       if (!ready) {

@@ -14,7 +14,7 @@ const {
   detectEngineDir,
 } = require('../../src/main/voice-engine');
 
-test('detectEngineDir returns the first candidate that validates (has python + start.py)', () => {
+test('detectEngineDir returns the first candidate that validates (has python + server.py)', () => {
   const good = 'C:\\Users\\me\\Chatterbox-TTS-Server';
   const exists = (p) => p.startsWith(good); // only the good dir's files "exist"
   assert.equal(
@@ -28,11 +28,11 @@ test('detectEngineDir returns the first candidate that validates (has python + s
 
 // --- engineCommand ----------------------------------------------------------
 
-test('engineCommand builds the proven launch command from the plan', () => {
+test('engineCommand runs server.py directly with the embedded python', () => {
   const dir = 'C:\\Users\\me\\VoiceEngine';
   const cmd = engineCommand(dir);
   assert.strictEqual(cmd.exe, path.join(dir, 'python_embedded', 'python.exe'));
-  assert.deepStrictEqual(cmd.args, ['start.py', '--portable']);
+  assert.deepStrictEqual(cmd.args, ['server.py']); // NOT start.py (that's a system-python launcher)
   assert.strictEqual(cmd.cwd, dir);
 });
 
@@ -44,20 +44,20 @@ test('engineCommand joins paths correctly regardless of trailing slash', () => {
 
 // --- validateEngineDir -------------------------------------------------------
 
-test('validateEngineDir is true when both python.exe and start.py exist', () => {
+test('validateEngineDir is true when both python.exe and server.py exist', () => {
   const dir = 'C:\\VoiceEngine';
   const exists = (p) =>
-    p === path.join(dir, 'python_embedded', 'python.exe') || p === path.join(dir, 'start.py');
+    p === path.join(dir, 'python_embedded', 'python.exe') || p === path.join(dir, 'server.py');
   assert.strictEqual(validateEngineDir(dir, exists), true);
 });
 
 test('validateEngineDir is false when python.exe is missing', () => {
   const dir = 'C:\\VoiceEngine';
-  const exists = (p) => p === path.join(dir, 'start.py');
+  const exists = (p) => p === path.join(dir, 'server.py');
   assert.strictEqual(validateEngineDir(dir, exists), false);
 });
 
-test('validateEngineDir is false when start.py is missing', () => {
+test('validateEngineDir is false when server.py is missing', () => {
   const dir = 'C:\\VoiceEngine';
   const exists = (p) => p === path.join(dir, 'python_embedded', 'python.exe');
   assert.strictEqual(validateEngineDir(dir, exists), false);
