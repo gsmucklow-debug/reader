@@ -503,6 +503,52 @@ async function dropBook(win) {
     r.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await win.click('#pause-toggle button[data-pause="longer"]'); // non-default end-of-chapter pause
+
+  // Expressive GPU voice UI: the panel-open health probe (fired by the #voice-btn click
+  // above) has resolved by now — wait for it to settle either way, then check the AC
+  // that actually applies. This machine may or may not have a real Chatterbox server on
+  // localhost:8004 (a leftover spike server), so branch on the observed state instead of
+  // assuming "no server" — the important invariant is the segment's disabled state always
+  // matches the health probe's result.
+  await win.waitForFunction(
+    () => document.getElementById('engine-hint').hidden !== undefined
+      && document.querySelector('#engine-toggle button[data-engine="expressive"]').disabled
+        === !document.getElementById('engine-hint').hidden,
+    null, { timeout: 3000 },
+  ).catch(() => {}); // best-effort settle wait; the assertions below are the real check
+  const health = await win.evaluate(() => ({
+    disabled: document.querySelector('#engine-toggle button[data-engine="expressive"]').disabled,
+    hintHidden: document.getElementById('engine-hint').hidden,
+  }));
+  assert.strictEqual(health.disabled, health.hintHidden === false, 'expressive segment disabled state must match the hint visibility');
+  if (health.disabled) {
+    console.log('  ✓ expressive engine segment disables with a hint (no server reachable on this machine)');
+  } else {
+    console.log('  ✓ expressive engine segment stays enabled (a real server answered on localhost:8004)');
+  }
+
+  // Drive the engine switch via the test-only seam (mirrors how a restored persisted
+  // setting would apply — applySettings sets state directly, no reload/button click) so
+  // this proves the voice list / sliders / persistence regardless of server reachability
+  // or whether the segment happens to be enabled on this machine.
+  await win.evaluate(() => window.__test_setEngine('expressive'));
+  await win.waitForSelector('#expressive-voice-section:not([hidden])', { timeout: 2000 });
+  assert.ok(await win.$('#kokoro-voice-section[hidden]'), 'Kokoro voice section hides when Expressive is active');
+  await win.click('#expressive-voice-list button.voice-pick[data-voice="Alice.wav"]');
+  const setParam = async (id, value) => {
+    await win.evaluate(({ id, value }) => {
+      const r = document.getElementById(id);
+      r.value = String(value);
+      r.dispatchEvent(new Event('input', { bubbles: true }));
+      r.dispatchEvent(new Event('change', { bubbles: true }));
+    }, { id, value });
+  };
+  await setParam('exaggeration-range', 1.1);
+  await setParam('cfg-range', 0.65);
+  await setParam('temperature-range', 0.9);
+  await setParam('speedfactor-range', 1.3);
+  console.log('  ✓ expressive engine toggle + voice + sliders render and apply in the UI');
+
   await win.waitForTimeout(700); // let the debounced save + IPC write settings.json
   await win.screenshot({ path: path.join(SHOTS, '3-dark-single.png') });
   await app.close();
@@ -538,6 +584,13 @@ async function dropBook(win) {
     speed: document.getElementById('speed-range').value,
     speedLabel: document.getElementById('speed-label').textContent,
     pause: document.querySelector('#pause-toggle button.active')?.dataset.pause,
+    ttsEngine: document.getElementById('engine-toggle').querySelector('button.active')?.dataset.engine,
+    expressiveSectionVisible: !document.getElementById('expressive-voice-section').hidden,
+    expressiveVoice: document.getElementById('expressive-voice-list').querySelector('.voice-pick.active')?.dataset.voice,
+    exaggeration: document.getElementById('exaggeration-range').value,
+    cfgWeight: document.getElementById('cfg-range').value,
+    temperature: document.getElementById('temperature-range').value,
+    speedFactor: document.getElementById('speedfactor-range').value,
   }));
   assert.strictEqual(persisted.theme, 'dark', 'theme should persist across restart');
   assert.strictEqual(persisted.view, 'two', 'view mode should persist across restart');
@@ -549,6 +602,14 @@ async function dropBook(win) {
   assert.strictEqual(persisted.speed, '1.25', 'reading speed should persist across restart');
   assert.strictEqual(persisted.speedLabel, '1.25×', 'speed label should reflect persisted value');
   assert.strictEqual(persisted.pause, 'longer', 'end-of-chapter pause should persist across restart');
+  assert.strictEqual(persisted.ttsEngine, 'expressive', 'expressive engine should persist across restart');
+  assert.ok(persisted.expressiveSectionVisible, 'expressive voice section should be visible after restart (engine=expressive)');
+  assert.strictEqual(persisted.expressiveVoice, 'Alice.wav', 'expressive voice should persist across restart');
+  assert.strictEqual(persisted.exaggeration, '1.1', 'exaggeration should persist across restart');
+  assert.strictEqual(persisted.cfgWeight, '0.65', 'cfgWeight should persist across restart');
+  assert.strictEqual(persisted.temperature, '0.9', 'temperature should persist across restart');
+  assert.strictEqual(persisted.speedFactor, '1.3', 'speedFactor should persist across restart');
+  console.log('  ✓ expressive engine/voice/sliders persist across restart');
 
   // --- Phase 4: Markdown reading -------------------------------------------
   await win.click('#library-btn');

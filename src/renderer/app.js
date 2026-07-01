@@ -32,6 +32,13 @@ const state = {
   speed: 1,                   // reading-speed multiplier (Kokoro `speed`)
   endChapterPause: 'off',     // 'off' | 'short' | 'longer' — rest beat when crossing a chapter
   currentBookId: null,        // Phase 3: open book's library id (for progress saves)
+  // Expressive GPU voice (optional, global — same persistence model as voice/speed above):
+  ttsEngine: 'kokoro',         // 'kokoro' | 'expressive'
+  expressiveVoice: 'Axel.wav', // server predefined_voice_id (filename)
+  exaggeration: 0.5,
+  cfgWeight: 0.3,
+  temperature: 0.75,
+  speedFactor: 1.0,
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -56,6 +63,26 @@ const colsPerPage = () => (currentView() === 'two' ? 2 : 1);
 
 // --- Loading a book -------------------------------------------------------
 
+// Build the per-call synth opts from live state. Kokoro: unchanged shape. Expressive: adds
+// `engine` + the server voice/params on top of voice/speed (so main's Kokoro fallback still
+// has them if the server is unreachable). Read live (not captured) so a setting change takes
+// effect on the very next synth call via reload() — no player rebuild needed.
+function synthOpts() {
+  if (state.ttsEngine === 'expressive') {
+    return {
+      voice: state.voice,
+      speed: state.speed,
+      engine: 'expressive',
+      expressiveVoice: state.expressiveVoice,
+      exaggeration: state.exaggeration,
+      cfgWeight: state.cfgWeight,
+      temperature: state.temperature,
+      speedFactor: state.speedFactor,
+    };
+  }
+  return { voice: state.voice, speed: state.speed };
+}
+
 function showDocument(doc, fileName) {
   document.title = doc.title ? `${doc.title} — Reader` : 'Reader';
   state.doc = doc;
@@ -78,9 +105,9 @@ function showDocument(doc, fileName) {
   // still rejecting so the player's catch leaves the highlight in place.
   state.player = ReaderPlayer.createPlayer({
     doc,
-    // Read voice+speed LIVE at call time so a setting change takes effect via the
-    // player's reload() (flush + restart) without rebuilding the player.
-    synth: (text) => window.reader.synthesize(text, { voice: state.voice, speed: state.speed })
+    // Read engine/voice/speed/params LIVE at call time (via synthOpts()) so a setting
+    // change takes effect via the player's reload() (flush + restart) without rebuilding it.
+    synth: (text) => window.reader.synthesize(text, synthOpts())
       .catch((e) => {
         console.warn('[Reader] synth failed:', e);
         throw e;
@@ -637,6 +664,57 @@ function markActiveVoice() {
   }
 }
 
+// All 28 server (Chatterbox-class) voices, grouped Male/Female — all US English (user
+// confirmed by ear 2026-07-01; no accent sub-grouping yet). `id` is the server filename
+// (predefined_voice_id), mirroring the Kokoro VOICES array above.
+const EXPRESSIVE_VOICES = [
+  { group: 'Female', items: [
+    'Abigail', 'Alice', 'Cora', 'Elena', 'Emily', 'Gianna', 'Jade', 'Layla', 'Olivia', 'Taylor',
+  ].map((n) => ({ id: `${n}.wav`, label: n })) },
+  { group: 'Male', items: [
+    'Adrian', 'Alexander', 'Austin', 'Axel', 'Connor', 'Eli', 'Everett', 'Gabriel', 'Henry', 'Ian',
+    'Jeremiah', 'Jordan', 'Julian', 'Leonardo', 'Michael', 'Miles', 'Ryan', 'Thomas',
+  ].map((n) => ({ id: `${n}.wav`, label: n })) },
+];
+
+const expressiveVoiceListEl = document.getElementById('expressive-voice-list');
+function buildExpressiveVoiceList() {
+  expressiveVoiceListEl.innerHTML = '';
+  for (const grp of EXPRESSIVE_VOICES) {
+    const h = document.createElement('div');
+    h.className = 'voice-group';
+    h.textContent = grp.group;
+    expressiveVoiceListEl.appendChild(h);
+    for (const v of grp.items) {
+      const row = document.createElement('div');
+      row.className = 'voice-row';
+      const fullLabel = `${v.label} — ${grp.group}`;
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'voice-pick';
+      pick.dataset.voice = v.id;
+      pick.textContent = v.label;
+      pick.setAttribute('aria-label', fullLabel);
+      pick.addEventListener('click', () => { setExpressiveVoice(v.id); markActiveExpressiveVoice(); });
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'voice-preview';
+      prev.title = 'Preview';
+      prev.setAttribute('aria-label', `Preview ${fullLabel}`);
+      prev.textContent = '▶';
+      prev.addEventListener('click', (e) => { e.stopPropagation(); previewExpressiveVoice(v.id); });
+      row.append(pick, prev);
+      expressiveVoiceListEl.appendChild(row);
+    }
+  }
+  markActiveExpressiveVoice();
+}
+function markActiveExpressiveVoice() {
+  for (const b of expressiveVoiceListEl.querySelectorAll('.voice-pick')) {
+    b.classList.toggle('active', b.dataset.voice === state.expressiveVoice);
+  }
+}
+
 // ▶ preview: play a short sample in the given voice. Ducks narration first (the
 // user resumes manually) and is one-shot — it never touches the player's state.
 let previewClip = null;
@@ -650,6 +728,29 @@ async function previewVoice(voiceId) {
     previewClip = await makeClip(wav, sampleRate);
     previewClip.play(() => {});
   } catch (e) { console.warn('[Reader] voice preview failed:', e); }
+}
+
+// ▶ preview for an expressive voice: same duck/one-shot pattern, but posts through the
+// expressive engine with the CURRENT sliders so the preview matches what play will sound like.
+async function previewExpressiveVoice(voiceId) {
+  if (state.player && state.player.isPlaying()) state.player.pause(); // duck narration
+  updatePlayButton();
+  await resumeAudio();
+  try {
+    if (previewClip) previewClip.stop();
+    const { wav, sampleRate } = await window.reader.synthesize(SAMPLE_TEXT, {
+      engine: 'expressive',
+      expressiveVoice: voiceId,
+      voice: state.voice,
+      speed: state.speed,
+      exaggeration: state.exaggeration,
+      cfgWeight: state.cfgWeight,
+      temperature: state.temperature,
+      speedFactor: state.speedFactor,
+    });
+    previewClip = await makeClip(wav, sampleRate);
+    previewClip.play(() => {});
+  } catch (e) { console.warn('[Reader] expressive voice preview failed:', e); }
 }
 
 // Speed slider: track the live label on every drag tick (`input`), but only apply
@@ -667,6 +768,59 @@ document.getElementById('pause-toggle').addEventListener('click', (e) => {
   for (const b of document.querySelectorAll('#pause-toggle button')) b.classList.toggle('active', b === btn);
 });
 
+// --- Engine toggle (Offline Kokoro <-> Expressive GPU) + generation sliders ---
+
+const engineToggleEl = document.getElementById('engine-toggle');
+const engineHintEl = document.getElementById('engine-hint');
+const kokoroSectionEl = document.getElementById('kokoro-voice-section');
+const expressiveSectionEl = document.getElementById('expressive-voice-section');
+
+function showEngineSection(engine) {
+  kokoroSectionEl.hidden = engine === 'expressive';
+  expressiveSectionEl.hidden = engine !== 'expressive';
+  for (const b of engineToggleEl.querySelectorAll('button[data-engine]')) {
+    b.classList.toggle('active', b.dataset.engine === engine);
+  }
+}
+
+engineToggleEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-engine]');
+  if (!btn || btn.disabled) return;
+  setEngine(btn.dataset.engine);
+});
+
+// On Voice-panel open, probe the expressive server so a dead server disables the segment
+// with a hint instead of letting the user pick a backend that will just fall back silently.
+document.getElementById('voice-btn').addEventListener('click', checkExpressiveHealth);
+async function checkExpressiveHealth() {
+  const expressiveBtn = engineToggleEl.querySelector('button[data-engine="expressive"]');
+  if (!window.reader || !window.reader.expressiveHealth) return;
+  try {
+    const { ok } = await window.reader.expressiveHealth();
+    expressiveBtn.disabled = !ok;
+    engineHintEl.hidden = ok;
+  } catch (_) {
+    expressiveBtn.disabled = true;
+    engineHintEl.hidden = false;
+  }
+}
+
+// Four Chatterbox generation sliders: track the live label on every drag tick (`input`), but
+// only apply (state + reload + save) on release (`change`) — same rule the speed slider follows,
+// so a drag isn't a storm of re-synths.
+function fmtParam(x) { return (+x).toFixed(2); }
+function wireParamSlider(rangeId, labelId, setter) {
+  const range = document.getElementById(rangeId);
+  const label = document.getElementById(labelId);
+  range.addEventListener('input', () => { label.textContent = fmtParam(range.value); });
+  range.addEventListener('change', () => setter(+range.value));
+  return { range, label };
+}
+const exaggerationSlider = wireParamSlider('exaggeration-range', 'exaggeration-label', setExaggeration);
+const cfgSlider = wireParamSlider('cfg-range', 'cfg-label', setCfgWeight);
+const temperatureSlider = wireParamSlider('temperature-range', 'temperature-label', setTemperature);
+const speedFactorSlider = wireParamSlider('speedfactor-range', 'speedfactor-label', setSpeedFactor);
+
 // --- Persisted comfort settings (global only; wired to main in this phase) --
 
 function gatherSettings() {
@@ -679,6 +833,12 @@ function gatherSettings() {
     voice: state.voice,
     speed: state.speed,
     endChapterPause: state.endChapterPause,
+    ttsEngine: state.ttsEngine,
+    expressiveVoice: state.expressiveVoice,
+    exaggeration: state.exaggeration,
+    cfgWeight: state.cfgWeight,
+    temperature: state.temperature,
+    speedFactor: state.speedFactor,
   };
 }
 
@@ -720,6 +880,40 @@ function applySettings(s) {
     for (const b of document.querySelectorAll('#pause-toggle button')) {
       b.classList.toggle('active', b.dataset.pause === s.endChapterPause);
     }
+  }
+  // Expressive GPU voice: same rule as voice/speed/pause above — set state + reflect the UI
+  // directly, NOT via setEngine/setExpressiveVoice/setExaggeration/etc (they reload()+save,
+  // a boot storm, and there's no player yet). The live synthOpts() closure reads state on
+  // the first play.
+  if (typeof s.expressiveVoice === 'string') {
+    state.expressiveVoice = s.expressiveVoice;
+    markActiveExpressiveVoice();
+  }
+  if (Number.isFinite(s.exaggeration)) {
+    state.exaggeration = s.exaggeration;
+    exaggerationSlider.range.value = String(s.exaggeration);
+    exaggerationSlider.label.textContent = fmtParam(s.exaggeration);
+  }
+  if (Number.isFinite(s.cfgWeight)) {
+    state.cfgWeight = s.cfgWeight;
+    cfgSlider.range.value = String(s.cfgWeight);
+    cfgSlider.label.textContent = fmtParam(s.cfgWeight);
+  }
+  if (Number.isFinite(s.temperature)) {
+    state.temperature = s.temperature;
+    temperatureSlider.range.value = String(s.temperature);
+    temperatureSlider.label.textContent = fmtParam(s.temperature);
+  }
+  if (Number.isFinite(s.speedFactor)) {
+    state.speedFactor = s.speedFactor;
+    speedFactorSlider.range.value = String(s.speedFactor);
+    speedFactorSlider.label.textContent = fmtParam(s.speedFactor);
+  }
+  // Engine last, after voice/params are in state, so the visible section + toggle match
+  // the restored engine right away (no reload — showEngineSection is CSS-only).
+  if (s.ttsEngine === 'kokoro' || s.ttsEngine === 'expressive') {
+    state.ttsEngine = s.ttsEngine;
+    showEngineSection(state.ttsEngine);
   }
 }
 
@@ -881,6 +1075,46 @@ function setEndChapterPause(mode) {
   saveSettings();
 }
 
+// Expressive GPU voice: engine switch, voice pick, and the four generation-param sliders.
+// Same reload()+saveSettings() pattern as setVoice/setSpeed above — the live synthOpts()
+// closure reads state on the next synth call.
+function setEngine(engine) {
+  state.ttsEngine = (engine === 'expressive') ? 'expressive' : 'kokoro';
+  showEngineSection(state.ttsEngine);
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+// Test-only seam (mirrors window.highlightSentence/goToPageContaining above): lets the smoke
+// suite drive an engine switch the way a restored persisted setting would, independent of the
+// engine-toggle button's disabled state (which correctly blocks a real click when the
+// expressive server is unreachable — see the panel-open health check).
+window.__test_setEngine = setEngine;
+function setExpressiveVoice(voiceId) {
+  state.expressiveVoice = voiceId || 'Axel.wav';
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+function setExaggeration(x) {
+  state.exaggeration = Math.min(1.5, Math.max(0.25, Number(x) || 0.5));
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+function setCfgWeight(x) {
+  state.cfgWeight = Math.min(1, Math.max(0, Number(x) || 0.3));
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+function setTemperature(x) {
+  state.temperature = Math.min(1, Math.max(0.5, Number(x) || 0.75));
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+function setSpeedFactor(x) {
+  state.speedFactor = Math.min(1.5, Math.max(0.5, Number(x) || 1.0));
+  if (state.player) state.player.reload();
+  saveSettings();
+}
+
 // --- Wire the playback controls + keyboard + click-to-play ----------------
 const P2 = () => state.player;
 document.getElementById('play-pause').addEventListener('click', async (e) => {
@@ -921,5 +1155,6 @@ window.addEventListener('beforeunload', () => {
 // --- Boot -----------------------------------------------------------------
 buildFontList();
 buildVoiceList(); // before loadSettings() so applySettings' markActiveVoice has buttons
+buildExpressiveVoiceList(); // before loadSettings() so applySettings' markActiveExpressiveVoice has buttons
 loadSettings();
 showLibrary().catch((e) => console.error('[Reader] boot showLibrary failed:', e)); // shelf is home (Phase 3)

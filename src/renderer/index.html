@@ -60,11 +60,43 @@
       </div>
     </section>
 
-    <!-- Voice popover: how the page SOUNDS (voice, speed, end-of-chapter pause). -->
+    <!-- Voice popover: how the page SOUNDS (engine, voice, speed, end-of-chapter pause). -->
     <section id="voice-panel" class="popover" hidden aria-label="Voice settings">
-      <div class="setting setting-voice">
+      <div class="setting">
+        <span>Engine</span>
+        <div class="segmented" id="engine-toggle">
+          <button type="button" data-engine="kokoro" class="active">Offline (Kokoro)</button>
+          <button type="button" data-engine="expressive">Expressive (GPU)</button>
+        </div>
+        <span id="engine-hint" aria-live="polite" hidden>Start the Voice Engine to use this option.</span>
+      </div>
+      <div class="setting setting-voice" id="kokoro-voice-section">
         <span>Voice</span>
         <div class="voice-list" id="voice-list" role="listbox" aria-label="Narration voice"></div>
+      </div>
+      <div class="setting setting-voice" id="expressive-voice-section" hidden>
+        <span>Voice</span>
+        <div class="voice-list" id="expressive-voice-list" role="listbox" aria-label="Expressive narration voice"></div>
+        <div class="setting">
+          <label for="exaggeration-range">Exaggeration</label>
+          <input id="exaggeration-range" type="range" min="0.25" max="1.5" step="0.05" value="0.5" />
+          <span id="exaggeration-label" aria-live="polite">0.50</span>
+        </div>
+        <div class="setting">
+          <label for="cfg-range">CFG weight</label>
+          <input id="cfg-range" type="range" min="0" max="1" step="0.05" value="0.3" />
+          <span id="cfg-label" aria-live="polite">0.30</span>
+        </div>
+        <div class="setting">
+          <label for="temperature-range">Temperature</label>
+          <input id="temperature-range" type="range" min="0.5" max="1" step="0.05" value="0.75" />
+          <span id="temperature-label" aria-live="polite">0.75</span>
+        </div>
+        <div class="setting">
+          <label for="speedfactor-range">Speed factor</label>
+          <input id="speedfactor-range" type="range" min="0.5" max="1.5" step="0.05" value="1" />
+          <span id="speedfactor-label" aria-live="polite">1.00</span>
+        </div>
       </div>
       <div class="setting">
         <label for="speed-range">Reading speed</label>
