@@ -997,6 +997,7 @@ async function ensureVoiceEngineForExpressive({ prompt }) {
   setHint('Starting Voice Engine…', true);
   try {
     let result = await window.reader.engineEnsureRunning(undefined, state.voiceEngineDir);
+    let cancelled = false;
     if (!result.ok && result.reason === 'no-dir' && prompt && window.reader.engineLocate) {
       const dir = await window.reader.engineLocate();
       if (dir) {
@@ -1004,11 +1005,19 @@ async function ensureVoiceEngineForExpressive({ prompt }) {
         saveSettings();
         setHint('Starting Voice Engine…', true);
         result = await window.reader.engineEnsureRunning(undefined, state.voiceEngineDir);
+      } else {
+        cancelled = true; // user dismissed the folder picker
       }
     }
     if (result.ok) {
       setHint('', false);
       checkExpressiveHealth();
+    } else if (cancelled) {
+      // Plan-locked UX: declining to locate the folder reverts to Kokoro (never leaves a
+      // persisted dead-Expressive state) -- prompt:false so this revert itself can't re-open
+      // the picker (setEngine('kokoro') never calls ensureVoiceEngineForExpressive anyway).
+      setEngine('kokoro', { prompt: false });
+      setHint('Start the Voice Engine to use this option.', true);
     } else {
       // Never break narration: leave Kokoro usable and show a gentle explanation. The engine
       // toggle itself is unaffected -- the user can flip back to Kokoro or retry later.
