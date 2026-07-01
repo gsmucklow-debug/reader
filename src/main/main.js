@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog, utilityProcess, Menu } = require('e
 const fs = require('node:fs/promises');
 const fssync = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
@@ -11,7 +12,19 @@ const { makeLibrary } = require('./library');
 const { synthesizeRemote, wavSampleRate, expressiveCacheVoice } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
 const { spawn } = require('node:child_process');
-const { engineCommand, validateEngineDir, pollUntilReady } = require('./voice-engine');
+const { engineCommand, validateEngineDir, pollUntilReady, detectEngineDir } = require('./voice-engine');
+
+// Standard places the Voice Engine (Chatterbox-TTS-Server) folder lives, checked in order so
+// Reader can auto-start it without ever asking the user to locate it.
+function engineDirCandidates() {
+  const home = os.homedir();
+  return [
+    path.join(home, 'Chatterbox-TTS-Server'),
+    path.join(home, 'Downloads', 'Chatterbox-TTS-Server'),
+    path.join(home, 'Desktop', 'Chatterbox-TTS-Server'),
+    path.join(home, 'Documents', 'Chatterbox-TTS-Server'),
+  ];
+}
 
 // The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
 // opts-driven: the renderer sends `engine: 'expressive'` (+ params) per synthesize call, chosen
@@ -331,10 +344,16 @@ function ensureVoiceEngineRunning(url, dir) {
       if (process.platform !== 'win32') {
         return { ok: false, reason: 'unsupported' };
       }
-      if (!validateEngineDir(dir, fssync.existsSync)) {
+      // Resolve the engine folder: the saved dir if it's valid, else AUTO-DETECT the standard
+      // install location(s) — the user should never have to locate a folder on their own machine.
+      // Only 'no-dir' if it's genuinely nowhere to be found.
+      const useDir = validateEngineDir(dir, fssync.existsSync)
+        ? dir
+        : detectEngineDir(engineDirCandidates(), fssync.existsSync);
+      if (!useDir) {
         return { ok: false, reason: 'no-dir' };
       }
-      const { exe, args, cwd } = engineCommand(dir);
+      const { exe, args, cwd } = engineCommand(useDir);
       let child;
       try {
         child = spawn(exe, args, { cwd, windowsHide: true, stdio: 'ignore' });
@@ -366,7 +385,7 @@ function ensureVoiceEngineRunning(url, dir) {
         await stopVoiceEngine();
         return { ok: false, reason: 'start-failed' };
       }
-      return { ok: true, started: true };
+      return { ok: true, started: true, dir: useDir }; // return the dir so the renderer can persist it
     } finally {
       voiceEngine.starting = null;
     }

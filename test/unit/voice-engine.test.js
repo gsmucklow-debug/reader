@@ -11,7 +11,20 @@ const {
   engineCommand,
   validateEngineDir,
   pollUntilReady,
+  detectEngineDir,
 } = require('../../src/main/voice-engine');
+
+test('detectEngineDir returns the first candidate that validates (has python + start.py)', () => {
+  const good = 'C:\\Users\\me\\Chatterbox-TTS-Server';
+  const exists = (p) => p.startsWith(good); // only the good dir's files "exist"
+  assert.equal(
+    detectEngineDir(['C:\\nope', good, 'C:\\also-nope'], exists),
+    good,
+  );
+  assert.equal(detectEngineDir(['C:\\nope', 'C:\\also-nope'], exists), null);
+  assert.equal(detectEngineDir([], exists), null);
+  assert.equal(detectEngineDir(undefined, exists), null);
+});
 
 // --- engineCommand ----------------------------------------------------------
 

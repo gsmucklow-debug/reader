@@ -1016,6 +1016,11 @@ async function ensureVoiceEngineForExpressive({ prompt }) {
       }
     }
     if (result.ok) {
+      // Persist the folder Reader used (auto-detected or reused) so it's remembered next time.
+      if (result.dir && result.dir !== state.voiceEngineDir) {
+        state.voiceEngineDir = result.dir;
+        saveSettings();
+      }
       setHint('', false);
       checkExpressiveHealth();
     } else if (cancelled) {

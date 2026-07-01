@@ -55,4 +55,14 @@ async function pollUntilReady({ healthFn, intervalMs, timeoutMs, sleepFn }) {
   }
 }
 
-module.exports = { engineCommand, validateEngineDir, pollUntilReady };
+// Auto-detect the Voice Engine folder from a list of candidate paths, so the user never has to
+// locate it manually (it's a local install in a standard place). Returns the first candidate that
+// validates, else null. `candidates` + `fsExistsFn` are injected so this is testable.
+function detectEngineDir(candidates, fsExistsFn) {
+  for (const dir of candidates || []) {
+    if (validateEngineDir(dir, fsExistsFn)) return dir;
+  }
+  return null;
+}
+
+module.exports = { engineCommand, validateEngineDir, pollUntilReady, detectEngineDir };
