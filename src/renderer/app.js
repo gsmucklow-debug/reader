@@ -45,6 +45,9 @@ const state = {
   // rename endpoint, so renaming is a Reader-side label only; the underlying reference filename
   // (the synth id) is unchanged. Persisted globally.
   expressiveVoiceNames: {},
+  // Voice Engine auto-launch (Windows-only): the folder containing python_embedded\python.exe
+  // + start.py, persisted after the one-time folder-picker prompt. null until located.
+  voiceEngineDir: null,
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -953,7 +956,7 @@ function showEngineSection(engine) {
 engineToggleEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-engine]');
   if (!btn || btn.disabled) return;
-  setEngine(btn.dataset.engine);
+  setEngine(btn.dataset.engine, { prompt: true }); // a real click: OK to pop the locate dialog
 });
 
 // On Voice-panel open, probe the expressive server so a dead server disables the segment
@@ -973,6 +976,51 @@ async function checkExpressiveHealth() {
   } catch (_) {
     expressiveBtn.disabled = true;
     engineHintEl.hidden = false;
+  }
+}
+
+// --- Voice Engine auto-launch (Windows-only) --------------------------------------------
+// Switching to Expressive (or restoring a persisted Expressive engine at boot) ensures the
+// optional Chatterbox server is up: reuse if already running, else spawn it (Windows-only,
+// needs a configured voiceEngineDir) and wait for readiness. `prompt` gates whether a locate
+// (folder-picker) dialog may be shown on 'no-dir' -- ONLY a real user click on the engine
+// toggle sets prompt:true. The __test_setEngine seam and boot restore both pass prompt:false,
+// so neither ever pops a native dialog with no user gesture behind it (that would block the
+// window with nothing to dismiss it -- see the smoke's restart-persistence check, which
+// restores ttsEngine='expressive' with voiceEngineDir unset).
+async function ensureVoiceEngineForExpressive({ prompt }) {
+  if (!window.reader || !window.reader.engineEnsureRunning) return;
+  const setHint = (text, show) => {
+    engineHintEl.textContent = text || 'Start the Voice Engine to use this option.';
+    engineHintEl.hidden = !show;
+  };
+  setHint('Starting Voice Engine…', true);
+  try {
+    let result = await window.reader.engineEnsureRunning(undefined, state.voiceEngineDir);
+    if (!result.ok && result.reason === 'no-dir' && prompt && window.reader.engineLocate) {
+      const dir = await window.reader.engineLocate();
+      if (dir) {
+        state.voiceEngineDir = dir;
+        saveSettings();
+        setHint('Starting Voice Engine…', true);
+        result = await window.reader.engineEnsureRunning(undefined, state.voiceEngineDir);
+      }
+    }
+    if (result.ok) {
+      setHint('', false);
+      checkExpressiveHealth();
+    } else {
+      // Never break narration: leave Kokoro usable and show a gentle explanation. The engine
+      // toggle itself is unaffected -- the user can flip back to Kokoro or retry later.
+      setHint(
+        result.reason === 'no-dir'
+          ? 'Locate your Voice Engine folder to use this option.'
+          : "Couldn't start the Voice Engine.",
+        true,
+      );
+    }
+  } catch (_) {
+    setHint("Couldn't start the Voice Engine.", true);
   }
 }
 
@@ -1013,6 +1061,7 @@ function gatherSettings() {
     speedFactor: state.speedFactor,
     expressiveMyVoices: state.myVoices,
     expressiveVoiceNames: state.expressiveVoiceNames,
+    voiceEngineDir: state.voiceEngineDir,
   };
 }
 
@@ -1092,12 +1141,20 @@ function applySettings(s) {
   if (s.expressiveVoiceNames && typeof s.expressiveVoiceNames === 'object') {
     state.expressiveVoiceNames = s.expressiveVoiceNames;
   }
+  if (typeof s.voiceEngineDir === 'string') {
+    state.voiceEngineDir = s.voiceEngineDir;
+  }
   buildExpressiveVoiceList();
   // Engine last, after voice/params are in state, so the visible section + toggle match
   // the restored engine right away (no reload — showEngineSection is CSS-only).
   if (s.ttsEngine === 'kokoro' || s.ttsEngine === 'expressive') {
     state.ttsEngine = s.ttsEngine;
     showEngineSection(state.ttsEngine);
+    // Boot restore of a persisted Expressive engine: ensure the Voice Engine is up, same as a
+    // live switch, but NEVER with a folder-picker prompt (prompt:false) -- a boot-time dialog
+    // would block the window with no user gesture behind it (and would hang the smoke's
+    // restart-persistence check, which restores ttsEngine='expressive' with no dir configured).
+    if (state.ttsEngine === 'expressive') ensureVoiceEngineForExpressive({ prompt: false });
   }
 }
 
@@ -1261,18 +1318,25 @@ function setEndChapterPause(mode) {
 
 // Expressive GPU voice: engine switch, voice pick, and the four generation-param sliders.
 // Same reload()+saveSettings() pattern as setVoice/setSpeed above — the live synthOpts()
-// closure reads state on the next synth call.
-function setEngine(engine) {
+// closure reads state on the next synth call. `opts.prompt` (default true, a real click) gates
+// whether ensureVoiceEngineForExpressive may pop the locate dialog on 'no-dir' -- see its
+// comment. The section is shown/hidden SYNCHRONOUSLY before the (async, Windows-only) engine
+// ensure-running call, so callers never block on a health probe just to see the right panel.
+function setEngine(engine, opts) {
+  const prompt = !opts || opts.prompt !== false;
   state.ttsEngine = (engine === 'expressive') ? 'expressive' : 'kokoro';
   showEngineSection(state.ttsEngine);
   if (state.player) state.player.reload();
   saveSettings();
+  if (state.ttsEngine === 'expressive') ensureVoiceEngineForExpressive({ prompt });
 }
 // Test-only seam (mirrors window.highlightSentence/goToPageContaining above): lets the smoke
 // suite drive an engine switch the way a restored persisted setting would, independent of the
 // engine-toggle button's disabled state (which correctly blocks a real click when the
-// expressive server is unreachable — see the panel-open health check).
-window.__test_setEngine = setEngine;
+// expressive server is unreachable — see the panel-open health check). Always prompt:false
+// (mirrors boot restore, NOT a real click) so it never pops the native locate dialog with no
+// user gesture behind it -- the smoke drives this with voiceEngineDir unset.
+window.__test_setEngine = (engine) => setEngine(engine, { prompt: false });
 function setExpressiveVoice(voiceId, mode = 'predefined') {
   state.expressiveVoice = voiceId || 'Axel.wav';
   state.expressiveVoiceMode = mode === 'clone' ? 'clone' : 'predefined';
