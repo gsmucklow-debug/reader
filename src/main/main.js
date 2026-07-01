@@ -250,14 +250,22 @@ ipcMain.handle('synthesize', async (_evt, {
     const cacheVoice = expressiveCacheVoice({ mode, voice: expressiveVoice, params: p });
     const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
     if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
-    try {
-      const out = await synthesizeRemote({ text: normalized, voice: expressiveVoice, mode, params: p, url });
-      await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
-      return { wav: out.wav, sampleRate: out.sampleRate };
-    } catch (err) {
-      console.warn('[expressive] falling back to Kokoro:', err && err.message);
-      // fall through to Kokoro
+    // Crash-safety: don't send NEW GPU work while the engine is shutting down — that's how the
+    // stop keeps the GPU idle before it kills the process. Fall through to Kokoro instead.
+    // `inFlight` lets stopVoiceEngine() wait for an in-progress synth to finish before stopping.
+    if (!voiceEngine.stopping) {
+      voiceEngine.inFlight++;
+      try {
+        const out = await synthesizeRemote({ text: normalized, voice: expressiveVoice, mode, params: p, url });
+        await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
+        return { wav: out.wav, sampleRate: out.sampleRate };
+      } catch (err) {
+        console.warn('[expressive] falling back to Kokoro:', err && err.message);
+      } finally {
+        voiceEngine.inFlight--;
+      }
     }
+    // fall through to Kokoro (server down/error, or engine stopping)
   }
 
   const hit = await clipCache.get(normalized, voice, speed);
@@ -301,6 +309,8 @@ const voiceEngine = {
   child: null,        // the spawned ChildProcess, or null
   startedByUs: false,  // true only if WE spawned it (guards quit-time kill against hijacking)
   starting: null,      // in-flight ensureRunning() promise, for the concurrency guard
+  inFlight: 0,         // count of expressive synth requests currently hitting the GPU
+  stopping: false,     // true while we're shutting the engine down (block new GPU work)
 };
 
 function sleep(ms) {
@@ -353,7 +363,7 @@ function ensureVoiceEngineRunning(url, dir) {
         sleepFn: sleep,
       });
       if (!ready) {
-        killVoiceEngineTree();
+        await stopVoiceEngine();
         return { ok: false, reason: 'start-failed' };
       }
       return { ok: true, started: true };
@@ -364,17 +374,41 @@ function ensureVoiceEngineRunning(url, dir) {
   return voiceEngine.starting;
 }
 
-// Kill the process TREE (start.py spawns a child uvicorn -- the actual :8004 listener -- so
-// `/T` is required or it would be orphaned). Only called for a server WE started.
-function killVoiceEngineTree() {
+// Stop the Voice Engine WE started, GPU-safely. The RTX driver can wedge (needing a reinstall)
+// if the CUDA process is force-killed mid-inference, so the order matters:
+//   1. mark `stopping` so no NEW expressive synth is sent (the synth handler falls back to Kokoro)
+//   2. wait for any in-flight synth to finish, so the GPU goes IDLE
+//   3. ask the process to close cleanly -- `taskkill` WITHOUT /F -- so uvicorn runs its lifespan
+//      shutdown and releases CUDA (server.py has a shutdown hook; engine.py empties the cache)
+//   4. escalate to force (`/F`) ONLY if it won't exit in the grace window -- and by then it is
+//      idle, so a force kill can't corrupt a live kernel.
+// `/T` kills the tree (start.py spawns the child uvicorn that actually listens on :8004).
+// Idempotent: nulls `child` first, so a second call (e.g. before-quit racing) is a no-op.
+async function stopVoiceEngine({ drainMs = 8000, graceMs = 6000 } = {}) {
   const child = voiceEngine.child;
+  const wasOurs = voiceEngine.startedByUs;
   voiceEngine.child = null;
   voiceEngine.startedByUs = false;
-  if (!child || !child.pid) return;
+  if (!child || !child.pid || !wasOurs) return;
+  voiceEngine.stopping = true;
+  let exited = child.exitCode !== null;
+  child.once('exit', () => { exited = true; });
   try {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-  } catch {
-    // best-effort; the app is quitting regardless
+    // 1+2: let the GPU go idle before we touch the process.
+    await pollUntilReady({
+      healthFn: () => voiceEngine.inFlight === 0, intervalMs: 200, timeoutMs: drainMs, sleepFn: sleep,
+    });
+    // 3: graceful close (no /F) -- uvicorn gets to run shutdown + free CUDA.
+    try { spawn('taskkill', ['/pid', String(child.pid), '/T'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+    await pollUntilReady({
+      healthFn: () => exited, intervalMs: 250, timeoutMs: graceMs, sleepFn: sleep,
+    });
+    // 4: still alive after the grace window? It's idle now, so a force kill is safe.
+    if (!exited) {
+      try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+    }
+  } finally {
+    voiceEngine.stopping = false;
   }
 }
 
@@ -451,12 +485,17 @@ app.on('will-quit', () => {
   if (ttsChild) ttsChild.kill();
 });
 
-// Stop the Voice Engine on quit -- but ONLY if Reader itself started it (never a server the
-// user already had running). before-quit can fire more than once (e.g. Cmd/Alt+F4 races with
-// the window close handler); killVoiceEngineTree() is idempotent (nulls child first) so a
-// second call is a no-op.
-app.on('before-quit', () => {
-  if (voiceEngine.startedByUs && voiceEngine.child) killVoiceEngineTree();
+// Stop the Voice Engine on quit -- but ONLY if Reader itself started it (never a server the user
+// already had running). The stop is async (drain-to-idle → graceful → escalate), which quit won't
+// await on its own, so we defer the quit until the stop finishes: preventDefault once, run the
+// GPU-safe stop, then quit for real. Capped windows so quit is never hung more than a few seconds.
+let engineQuitCleanup = false;
+app.on('before-quit', (e) => {
+  if (engineQuitCleanup) return;                       // second pass: let the real quit proceed
+  if (!(voiceEngine.startedByUs && voiceEngine.child)) return;
+  e.preventDefault();
+  engineQuitCleanup = true;
+  stopVoiceEngine({ drainMs: 4000, graceMs: 4000 }).finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {

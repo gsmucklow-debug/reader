@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('reader', {
   engineEnsureRunning: (url, dir) => ipcRenderer.invoke('engine:ensureRunning', url, dir),
   engineLocate: () => ipcRenderer.invoke('engine:locate'),
   engineStatus: (url) => ipcRenderer.invoke('engine:status', url),
+  // True where Reader can spawn the Voice Engine itself (Windows only). The renderer uses this
+  // to keep the Expressive toggle CLICKABLE when the server is down — clicking it auto-starts.
+  canAutoLaunchEngine: process.platform === 'win32',
 
   // Library (Phase 3)
   libraryList: () => ipcRenderer.invoke('library:list'),

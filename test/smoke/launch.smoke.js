@@ -509,22 +509,26 @@ async function dropBook(win) {
   await win.click('#pause-toggle button[data-pause="longer"]'); // non-default end-of-chapter pause
 
   // Expressive GPU voice UI: launch() points READER_EXPRESSIVE_URL at a guaranteed-dead
-  // port (127.0.0.1:1), so the panel-open health probe (fired by the #voice-btn click
-  // above) deterministically fails — proving the "server unreachable -> Expressive
-  // disabled with a hint" AC, independent of whatever may or may not be listening on the
-  // real default port on the machine running smoke.
+  // port (127.0.0.1:1), so the panel-open health probe (fired by the #voice-btn click above)
+  // deterministically fails. The engine hint must show. And the Expressive segment must be
+  // disabled ONLY where Reader can't auto-launch the engine — on Windows (auto-launch) it stays
+  // CLICKABLE (that click is what starts the engine); disabling it there would strand the user.
   await win.waitForFunction(
-    () => document.querySelector('#engine-toggle button[data-engine="expressive"]')?.disabled === true,
+    () => !document.getElementById('engine-hint')?.hidden,
     null, { timeout: 3000 },
   );
-  assert.ok(await win.$('#engine-hint:not([hidden])'), 'engine hint should show when the expressive server is unreachable');
-  console.log('  ✓ expressive engine segment disables with a hint when the server is unreachable');
+  const canAutoLaunch = await win.evaluate(() => !!(window.reader && window.reader.canAutoLaunchEngine));
+  const expressiveDisabled = await win.evaluate(
+    () => document.querySelector('#engine-toggle button[data-engine="expressive"]')?.disabled === true,
+  );
+  assert.strictEqual(expressiveDisabled, !canAutoLaunch,
+    'Expressive segment: clickable where auto-launch is possible (Windows), disabled only where it is not');
+  console.log(`  ✓ expressive segment ${canAutoLaunch ? 'stays clickable (auto-launch)' : 'disables'} + shows a hint when the server is unreachable`);
 
-  // The segment is legitimately disabled right now (per the AC above), so a real click on
-  // it is correctly a no-op. Drive the engine switch via the test-only seam (mirrors how a restored persisted
-  // setting would apply — applySettings sets state directly, no reload/button click) so
-  // this proves the voice list / sliders / persistence regardless of server reachability
-  // or whether the segment happens to be enabled on this machine.
+  // Drive the engine switch via the test-only seam, NOT a real click: a real click on the
+  // (now clickable) Expressive segment triggers ensureVoiceEngine -> no-dir -> a native folder
+  // picker, which would hang the headless smoke. The seam passes prompt:false (like boot
+  // restore), so it switches without a dialog and never spawns python (voiceEngineDir unset).
   await win.evaluate(() => window.__test_setEngine('expressive'));
   await win.waitForSelector('#expressive-voice-section:not([hidden])', { timeout: 2000 });
   assert.ok(await win.$('#kokoro-voice-section[hidden]'), 'Kokoro voice section hides when Expressive is active');

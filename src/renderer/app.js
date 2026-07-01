@@ -969,13 +969,19 @@ document.getElementById('voice-btn').addEventListener('click', () => {
 async function checkExpressiveHealth() {
   const expressiveBtn = engineToggleEl.querySelector('button[data-engine="expressive"]');
   if (!window.reader || !window.reader.expressiveHealth) return;
+  // Where Reader can auto-launch the engine (Windows), the toggle must stay CLICKABLE even when
+  // the server is down — that click is what starts it (locate → spawn). Only disable when there
+  // is no path to bring it up (non-Windows + server down).
+  const canAutoLaunch = !!(window.reader && window.reader.canAutoLaunchEngine);
   try {
     const { ok } = await window.reader.expressiveHealth();
-    expressiveBtn.disabled = !ok;
+    expressiveBtn.disabled = !ok && !canAutoLaunch;
     engineHintEl.hidden = ok;
+    if (!ok && canAutoLaunch) engineHintEl.textContent = 'Click Expressive to start the Voice Engine.';
   } catch (_) {
-    expressiveBtn.disabled = true;
+    expressiveBtn.disabled = !canAutoLaunch;
     engineHintEl.hidden = false;
+    if (canAutoLaunch) engineHintEl.textContent = 'Click Expressive to start the Voice Engine.';
   }
 }
 
