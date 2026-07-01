@@ -33,6 +33,13 @@ contextBridge.exposeInMainWorld('reader', {
   // File picker for a reference audio clip (.wav/.mp3), for the "Add a voice" flow.
   pickAudioBytes: () => ipcRenderer.invoke('pick-audio-bytes'),
 
+  // Voice Engine auto-launch (Windows-only): ensure the optional Chatterbox server is up
+  // (reusing an already-running one, or spawning it), a one-time folder picker to locate it,
+  // and a quick status probe.
+  engineEnsureRunning: (url, dir) => ipcRenderer.invoke('engine:ensureRunning', url, dir),
+  engineLocate: () => ipcRenderer.invoke('engine:locate'),
+  engineStatus: (url) => ipcRenderer.invoke('engine:status', url),
+
   // Library (Phase 3)
   libraryList: () => ipcRenderer.invoke('library:list'),
   libraryShelf: () => ipcRenderer.invoke('library:shelf'),

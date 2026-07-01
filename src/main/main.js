@@ -10,6 +10,8 @@ const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
 const { synthesizeRemote, wavSampleRate, expressiveCacheVoice } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
+const { spawn } = require('node:child_process');
+const { engineCommand, validateEngineDir, pollUntilReady } = require('./voice-engine');
 
 // The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
 // opts-driven: the renderer sends `engine: 'expressive'` (+ params) per synthesize call, chosen
@@ -97,6 +99,9 @@ const SETTINGS_KEYS = [
   // Reader-local clone voices (upload-only; filenames) + their display-name aliases. Reader
   // never lists the server's reference dir — a voice exists here only if the user uploaded it.
   'expressiveMyVoices', 'expressiveVoiceNames',
+  // Voice Engine auto-launch (Windows-only): the folder containing python_embedded\python.exe
+  // + start.py. Persisted once picked via the folder-picker prompt; never hardcoded.
+  'voiceEngineDir',
 ];
 
 function createWindow() {
@@ -265,19 +270,132 @@ ipcMain.handle('synthesize', async (_evt, {
 
 // Quick reachability probe for the optional expressive server, so the Voice panel can disable
 // the Expressive engine option (with a hint) instead of letting the user pick a dead backend.
-// Short timeout (~2s) since this runs on panel-open, on the UI thread's behalf.
-ipcMain.handle('expressive:health', async (_evt, url) => {
+// Short timeout (~2s) since this runs on panel-open, on the UI thread's behalf. Also reused by
+// the VoiceEngine manager below (both the reuse check and the readiness poll).
+async function expressiveHealthCheck(url, timeoutMs = 2000) {
   const base = url || EXPRESSIVE_DEFAULT_URL;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${base.replace(/\/$/, '')}/get_predefined_voices`, { signal: controller.signal });
-    return { ok: !!(res && res.ok) };
+    return !!(res && res.ok);
   } catch {
-    return { ok: false };
+    return false;
   } finally {
     clearTimeout(timer);
   }
+}
+
+ipcMain.handle('expressive:health', async (_evt, url) => {
+  return { ok: await expressiveHealthCheck(url, 2000) };
+});
+
+// --- Voice Engine lifecycle manager (Windows-only auto start/stop of the optional Chatterbox
+// server) -------------------------------------------------------------------------------------
+// Reader spawns `<voiceEngineDir>\python_embedded\python.exe start.py --portable` (cwd=dir,
+// hidden) when the user switches to the Expressive engine and it isn't already reachable, and
+// kills the process TREE on quit -- but ONLY if Reader itself started it (never a server the
+// user already had running, e.g. via the Start Voice Engine.vbs or a terminal). See
+// docs/plans/phase-voice-engine-autolaunch.md for the full design.
+const voiceEngine = {
+  child: null,        // the spawned ChildProcess, or null
+  startedByUs: false,  // true only if WE spawned it (guards quit-time kill against hijacking)
+  starting: null,      // in-flight ensureRunning() promise, for the concurrency guard
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Health-check first (reuse a server the user already has running -- never kill it), else spawn
+// (Windows-only, and only with a validated voiceEngineDir), then poll until ready (~60s).
+// Concurrency-guarded: a rapid double-toggle returns the SAME in-flight promise rather than
+// spawning twice.
+function ensureVoiceEngineRunning(url, dir) {
+  if (voiceEngine.starting) return voiceEngine.starting;
+  voiceEngine.starting = (async () => {
+    try {
+      if (await expressiveHealthCheck(url, 2000)) {
+        return { ok: true, external: true };
+      }
+      if (process.platform !== 'win32') {
+        return { ok: false, reason: 'unsupported' };
+      }
+      if (!validateEngineDir(dir, fssync.existsSync)) {
+        return { ok: false, reason: 'no-dir' };
+      }
+      const { exe, args, cwd } = engineCommand(dir);
+      let child;
+      try {
+        child = spawn(exe, args, { cwd, windowsHide: true, stdio: 'ignore' });
+      } catch (err) {
+        return { ok: false, reason: 'start-failed' };
+      }
+      voiceEngine.child = child;
+      voiceEngine.startedByUs = true;
+      child.on('exit', () => {
+        if (voiceEngine.child === child) {
+          voiceEngine.child = null;
+          voiceEngine.startedByUs = false;
+        }
+      });
+      child.on('error', () => {
+        if (voiceEngine.child === child) {
+          voiceEngine.child = null;
+          voiceEngine.startedByUs = false;
+        }
+      });
+
+      const ready = await pollUntilReady({
+        healthFn: () => expressiveHealthCheck(url, 2000),
+        intervalMs: 1500,
+        timeoutMs: 60000,
+        sleepFn: sleep,
+      });
+      if (!ready) {
+        killVoiceEngineTree();
+        return { ok: false, reason: 'start-failed' };
+      }
+      return { ok: true, started: true };
+    } finally {
+      voiceEngine.starting = null;
+    }
+  })();
+  return voiceEngine.starting;
+}
+
+// Kill the process TREE (start.py spawns a child uvicorn -- the actual :8004 listener -- so
+// `/T` is required or it would be orphaned). Only called for a server WE started.
+function killVoiceEngineTree() {
+  const child = voiceEngine.child;
+  voiceEngine.child = null;
+  voiceEngine.startedByUs = false;
+  if (!child || !child.pid) return;
+  try {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+  } catch {
+    // best-effort; the app is quitting regardless
+  }
+}
+
+ipcMain.handle('engine:ensureRunning', async (_evt, url, dir) => {
+  return ensureVoiceEngineRunning(url, dir);
+});
+
+ipcMain.handle('engine:locate', async () => {
+  if (process.platform !== 'win32') return null;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Locate your Voice Engine folder', properties: ['openDirectory'],
+  });
+  if (res.canceled || !res.filePaths[0]) return null;
+  const dir = res.filePaths[0];
+  if (!validateEngineDir(dir, fssync.existsSync)) return null;
+  return dir;
+});
+
+ipcMain.handle('engine:status', async (_evt, url) => {
+  const running = await expressiveHealthCheck(url, 2000);
+  return { running, startedByUs: voiceEngine.startedByUs };
 });
 
 // (No reference-listing IPC: My Voices is Reader-local and upload-only — Reader never queries
@@ -331,6 +449,14 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   if (ttsChild) ttsChild.kill();
+});
+
+// Stop the Voice Engine on quit -- but ONLY if Reader itself started it (never a server the
+// user already had running). before-quit can fire more than once (e.g. Cmd/Alt+F4 races with
+// the window close handler); killVoiceEngineTree() is idempotent (nulls child first) so a
+// second call is a no-op.
+app.on('before-quit', () => {
+  if (voiceEngine.startedByUs && voiceEngine.child) killVoiceEngineTree();
 });
 
 app.on('window-all-closed', () => {
