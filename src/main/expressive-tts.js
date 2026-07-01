@@ -83,29 +83,4 @@ function expressiveCacheVoice({ mode, voice, params }) {
   return `${m}:${voice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
 }
 
-// Normalize the `GET /get_reference_files` response into a flat list of filenames (the
-// server's reference_audio_filename ids, usable directly as `voice` in clone mode). The
-// exact response shape isn't confirmed against a live server, so this defensively accepts
-// the two most likely shapes for a devnen-style Chatterbox server: a bare array of filename
-// strings, or an array of objects carrying the name under `filename`/`name`/`file`. Also
-// tolerates a `{ files: [...] }`/`{ reference_files: [...] }` wrapper. Anything else (or a
-// parse failure upstream) should just come back as [] — never throw, per the "dead server
-// case" gotcha (an empty My Voices list, not a crash).
-function parseReferenceList(data) {
-  let list = data;
-  if (data && !Array.isArray(data) && typeof data === 'object') {
-    list = data.files || data.reference_files || data.reference_audio_files || [];
-  }
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((entry) => {
-      if (typeof entry === 'string') return entry;
-      if (entry && typeof entry === 'object') {
-        return entry.filename || entry.name || entry.file || null;
-      }
-      return null;
-    })
-    .filter((name) => typeof name === 'string' && name.length > 0);
-}
-
-module.exports = { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice };
+module.exports = { synthesizeRemote, wavSampleRate, expressiveCacheVoice };

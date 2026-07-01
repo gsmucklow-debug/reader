@@ -8,7 +8,7 @@ const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
-const { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice } = require('./expressive-tts');
+const { synthesizeRemote, wavSampleRate, expressiveCacheVoice } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
 
 // The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
@@ -94,8 +94,9 @@ const SETTINGS_KEYS = [
   // so a persisted clone re-selects correctly (a predefined id and a clone filename could
   // otherwise collide on re-select).
   'expressiveVoiceMode',
-  // Local display-name aliases for My Voices (filename -> friendly name); no server rename API.
-  'expressiveVoiceNames',
+  // Reader-local clone voices (upload-only; filenames) + their display-name aliases. Reader
+  // never lists the server's reference dir — a voice exists here only if the user uploaded it.
+  'expressiveMyVoices', 'expressiveVoiceNames',
 ];
 
 function createWindow() {
@@ -279,25 +280,8 @@ ipcMain.handle('expressive:health', async (_evt, url) => {
   }
 });
 
-// List the user's uploaded reference clips ("My Voices") from the expressive server, so the
-// Voice panel can render them as selectable clone voices. Same short-timeout, never-throw shape
-// as expressive:health — a dead/unreachable server must yield an empty list, not a crash or a
-// hung panel (My Voices simply stays empty; predefined voices are unaffected).
-ipcMain.handle('expressive:references', async (_evt, url) => {
-  const base = url || EXPRESSIVE_DEFAULT_URL;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2000);
-  try {
-    const res = await fetch(`${base.replace(/\/$/, '')}/get_reference_files`, { signal: controller.signal });
-    if (!res.ok) return [];
-    const data = await res.json().catch(() => null);
-    return parseReferenceList(data);
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
-});
+// (No reference-listing IPC: My Voices is Reader-local and upload-only — Reader never queries
+// the server's reference_audio/ dir. See the add flow + `expressiveMyVoices` in the renderer.)
 
 // Proxy the multipart reference upload — the renderer reads the picked file to bytes and never
 // touches the network itself (mirrors library:add). Field name 'file' per the server contract.

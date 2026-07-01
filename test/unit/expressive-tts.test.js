@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { synthesizeRemote, wavSampleRate, parseReferenceList, expressiveCacheVoice } = require('../../src/main/expressive-tts');
+const { synthesizeRemote, wavSampleRate, expressiveCacheVoice } = require('../../src/main/expressive-tts');
 
 // A minimal valid WAV header (44 bytes) with a given sample rate, for the fake server.
 function fakeWav(sampleRate) {
@@ -111,30 +111,6 @@ test('synthesizeRemote clone mode still sends only the provided generation param
 test('wavSampleRate reads the header rate, defaults to 24000 on garbage', () => {
   assert.strictEqual(wavSampleRate(fakeWav(48000)), 48000);
   assert.strictEqual(wavSampleRate(new Uint8Array([1, 2, 3])), 24000); // not a RIFF header
-});
-
-test('parseReferenceList accepts a bare array of filename strings', () => {
-  assert.deepStrictEqual(parseReferenceList(['gary.wav', 'draft-voice.mp3']), ['gary.wav', 'draft-voice.mp3']);
-});
-
-test('parseReferenceList accepts an array of objects with filename/name/file keys', () => {
-  assert.deepStrictEqual(
-    parseReferenceList([{ filename: 'a.wav' }, { name: 'b.wav' }, { file: 'c.wav' }]),
-    ['a.wav', 'b.wav', 'c.wav'],
-  );
-});
-
-test('parseReferenceList accepts a wrapped { files / reference_files } response', () => {
-  assert.deepStrictEqual(parseReferenceList({ files: ['x.wav'] }), ['x.wav']);
-  assert.deepStrictEqual(parseReferenceList({ reference_files: ['y.wav'] }), ['y.wav']);
-});
-
-test('parseReferenceList tolerates garbage without throwing (empty My Voices, not a crash)', () => {
-  assert.deepStrictEqual(parseReferenceList(null), []);
-  assert.deepStrictEqual(parseReferenceList(undefined), []);
-  assert.deepStrictEqual(parseReferenceList('nope'), []);
-  assert.deepStrictEqual(parseReferenceList({}), []);
-  assert.deepStrictEqual(parseReferenceList([1, null, {}, { other: 'x' }]), []);
 });
 
 const SAME_PARAMS = { exaggeration: 0.5, cfgWeight: 0.3, temperature: 0.75, speedFactor: 1.0 };

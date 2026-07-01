@@ -743,9 +743,10 @@ function markActiveExpressiveVoice() {
 }
 
 // --- BYO-reference voice cloning: "My Voices" group + "＋ Add a voice" ------------------
-// Dynamic (server-held) — rendered fresh each time buildExpressiveVoiceList() runs (boot,
-// with an empty list) and again after a successful references fetch/upload (panel-open,
-// or right after an upload completes) via refreshMyVoices() below.
+// Reader-LOCAL and upload-only: My Voices lists only the clips the user uploaded THROUGH Reader
+// (persisted in settings as `expressiveMyVoices`). Reader never queries the server's
+// reference_audio/ dir, so any other clones on the server stay invisible until explicitly added
+// here — an intentional curation boundary (user decision 2026-07-01).
 // A My Voices row's display label: the user's local alias if set, else the bare filename.
 function myVoiceLabel(filename) {
   const alias = state.expressiveVoiceNames && state.expressiveVoiceNames[filename];
@@ -780,20 +781,6 @@ function renderMyVoicesGroup() {
   addBtn.addEventListener('click', openAddVoicePopover);
   addRow.appendChild(addBtn);
   expressiveVoiceListEl.appendChild(addRow);
-}
-
-// Fetch the server's reference list and re-render the whole voice list (My Voices +
-// predefined) so newly-uploaded voices appear and the persisted selection (if a clone)
-// can finally be marked active once its button exists. Never throws — a dead server just
-// leaves My Voices empty, exactly like the expressive:health probe.
-async function refreshMyVoices() {
-  if (!window.reader || !window.reader.expressiveReferences) return;
-  try {
-    state.myVoices = await window.reader.expressiveReferences();
-  } catch (_) {
-    state.myVoices = [];
-  }
-  buildExpressiveVoiceList(); // rebuild folds markActiveExpressiveVoice() back in
 }
 
 // Inline "name it" popover for the Add-a-voice flow. window.prompt() is NOT usable in
@@ -840,8 +827,11 @@ function openAddVoicePopover() {
       const uploadName = `${safeName}${ext}`;
       setStatus('Uploading…', false);
       await window.reader.expressiveUploadReference(picked.bytes, uploadName);
-      await refreshMyVoices();
-      setExpressiveVoice(uploadName, 'clone');
+      // Upload-only + local: record the voice in Reader's own persisted list (dedup), then
+      // re-render and select it. Reader never re-reads the server folder to discover voices.
+      if (!state.myVoices.includes(uploadName)) state.myVoices.push(uploadName);
+      buildExpressiveVoiceList();
+      setExpressiveVoice(uploadName, 'clone'); // persists myVoices + selection via saveSettings
       markActiveExpressiveVoice();
       closeAddVoicePopover();
     } catch (e) {
@@ -968,11 +958,10 @@ engineToggleEl.addEventListener('click', (e) => {
 
 // On Voice-panel open, probe the expressive server so a dead server disables the segment
 // with a hint instead of letting the user pick a backend that will just fall back silently.
-// Also refresh "My Voices" (independent try/catch inside — a dead server just leaves it
-// empty, it must never block or crash the health probe above).
+// My Voices is Reader-local (upload-only), so panel-open only needs the reachability probe —
+// there's no server list to fetch.
 document.getElementById('voice-btn').addEventListener('click', () => {
   checkExpressiveHealth();
-  refreshMyVoices();
 });
 async function checkExpressiveHealth() {
   const expressiveBtn = engineToggleEl.querySelector('button[data-engine="expressive"]');
@@ -1022,6 +1011,7 @@ function gatherSettings() {
     cfgWeight: state.cfgWeight,
     temperature: state.temperature,
     speedFactor: state.speedFactor,
+    expressiveMyVoices: state.myVoices,
     expressiveVoiceNames: state.expressiveVoiceNames,
   };
 }
@@ -1071,9 +1061,6 @@ function applySettings(s) {
   // the first play.
   if (typeof s.expressiveVoice === 'string') {
     state.expressiveVoice = s.expressiveVoice;
-    // A persisted clone selection can't light up yet if My Voices hasn't been fetched
-    // (panel-open only) — refreshMyVoices() re-runs markActiveExpressiveVoice() once the
-    // button exists. Harmless no-op if the persisted voice is predefined.
     state.expressiveVoiceMode = (s.expressiveVoiceMode === 'clone') ? 'clone' : 'predefined';
     markActiveExpressiveVoice();
   }
@@ -1097,12 +1084,15 @@ function applySettings(s) {
     speedFactorSlider.range.value = String(s.speedFactor);
     speedFactorSlider.label.textContent = fmtParam(s.speedFactor);
   }
+  // Restore the local My Voices list + aliases, then rebuild once so the restored clone voices
+  // (upload-only, never re-fetched from the server) render with their friendly labels.
+  if (Array.isArray(s.expressiveMyVoices)) {
+    state.myVoices = s.expressiveMyVoices.filter((f) => typeof f === 'string');
+  }
   if (s.expressiveVoiceNames && typeof s.expressiveVoiceNames === 'object') {
     state.expressiveVoiceNames = s.expressiveVoiceNames;
-    // My Voices may already be rendered (boot builds an empty list; refreshMyVoices re-renders
-    // on panel-open) — a rebuild folds the restored aliases into the labels either way.
-    buildExpressiveVoiceList();
   }
+  buildExpressiveVoiceList();
   // Engine last, after voice/params are in state, so the visible section + toggle match
   // the restored engine right away (no reload — showEngineSection is CSS-only).
   if (s.ttsEngine === 'kokoro' || s.ttsEngine === 'expressive') {

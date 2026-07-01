@@ -27,7 +27,6 @@ contextBridge.exposeInMainWorld('reader', {
   // BYO-reference voice cloning: list uploaded reference clips ("My Voices"), and upload a
   // new one (bytes read in the renderer via pickAudioBytes; the multipart POST happens in
   // main so the renderer never touches the network directly).
-  expressiveReferences: (url) => ipcRenderer.invoke('expressive:references', url),
   expressiveUploadReference: (bytes, fileName, url) =>
     ipcRenderer.invoke('expressive:uploadReference', bytes, fileName, url),
 
