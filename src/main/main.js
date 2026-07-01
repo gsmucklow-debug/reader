@@ -94,6 +94,8 @@ const SETTINGS_KEYS = [
   // so a persisted clone re-selects correctly (a predefined id and a clone filename could
   // otherwise collide on re-select).
   'expressiveVoiceMode',
+  // Local display-name aliases for My Voices (filename -> friendly name); no server rename API.
+  'expressiveVoiceNames',
 ];
 
 function createWindow() {
@@ -305,7 +307,9 @@ ipcMain.handle('expressive:uploadReference', async (_evt, bytes, fileName, url) 
   const base = url || EXPRESSIVE_DEFAULT_URL;
   try {
     const fd = new FormData();
-    fd.append('file', new Blob([Buffer.from(bytes)]), fileName);
+    // Field name is 'files' (plural) — the server's /upload_reference takes a list (FastAPI
+    // `files: List[UploadFile]`); 'file' 422s with "field required: files".
+    fd.append('files', new Blob([Buffer.from(bytes)]), fileName);
     const res = await fetch(`${base.replace(/\/$/, '')}/upload_reference`, { method: 'POST', body: fd });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
