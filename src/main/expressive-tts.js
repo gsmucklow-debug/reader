@@ -9,10 +9,14 @@
 // `fetchImpl` is injected so this edge is unit-testable with a fake (mirroring how audio/IPC
 // are the injected edges elsewhere). In the app it defaults to the global fetch.
 
-async function synthesizeRemote({ text, voice, params, url, timeoutMs = 60000, fetchImpl }) {
+async function synthesizeRemote({ text, voice, mode, params, url, timeoutMs = 60000, fetchImpl }) {
   const doFetch = fetchImpl || globalThis.fetch;
   if (!doFetch) throw new Error('no fetch available for expressive TTS');
   const p = params || {};
+  // 'clone' is the BYO-reference path (voice is a reference_audio_filename uploaded via
+  // /upload_reference); anything else (including omitted) is the existing predefined-voice
+  // path, so old callers (and the smoke path) are byte-for-byte unaffected.
+  const isClone = mode === 'clone';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -23,9 +27,12 @@ async function synthesizeRemote({ text, voice, params, url, timeoutMs = 60000, f
       body: JSON.stringify({
         text,
         // Predefined-voice mode: `voice` is a predefined_voice_id (a .wav filename from the
-        // server's voices/ dir). Undefined → the server uses its own default voice.
-        voice_mode: 'predefined',
-        predefined_voice_id: voice || undefined,
+        // server's voices/ dir). Undefined → the server uses its own default voice. Clone mode:
+        // `voice` is a reference_audio_filename (a user-uploaded reference clip's filename).
+        voice_mode: isClone ? 'clone' : 'predefined',
+        ...(isClone
+          ? { reference_audio_filename: voice || undefined }
+          : { predefined_voice_id: voice || undefined }),
         output_format: 'wav',
         split_text: false, // Reader already sends one sentence; don't let the server re-chunk.
         stream: false,     // whole clip back in one response (design invariant)
@@ -63,4 +70,29 @@ function wavSampleRate(bytes) {
   return 24000;
 }
 
-module.exports = { synthesizeRemote, wavSampleRate };
+// Normalize the `GET /get_reference_files` response into a flat list of filenames (the
+// server's reference_audio_filename ids, usable directly as `voice` in clone mode). The
+// exact response shape isn't confirmed against a live server, so this defensively accepts
+// the two most likely shapes for a devnen-style Chatterbox server: a bare array of filename
+// strings, or an array of objects carrying the name under `filename`/`name`/`file`. Also
+// tolerates a `{ files: [...] }`/`{ reference_files: [...] }` wrapper. Anything else (or a
+// parse failure upstream) should just come back as [] — never throw, per the "dead server
+// case" gotcha (an empty My Voices list, not a crash).
+function parseReferenceList(data) {
+  let list = data;
+  if (data && !Array.isArray(data) && typeof data === 'object') {
+    list = data.files || data.reference_files || data.reference_audio_files || [];
+  }
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      if (entry && typeof entry === 'object') {
+        return entry.filename || entry.name || entry.file || null;
+      }
+      return null;
+    })
+    .filter((name) => typeof name === 'string' && name.length > 0);
+}
+
+module.exports = { synthesizeRemote, wavSampleRate, parseReferenceList };

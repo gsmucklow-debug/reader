@@ -8,7 +8,7 @@ const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
-const { synthesizeRemote, wavSampleRate } = require('./expressive-tts');
+const { synthesizeRemote, wavSampleRate, parseReferenceList } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
 
 // The optional expressive GPU voice (Chatterbox-class server on localhost). Routing is
@@ -90,6 +90,10 @@ const SETTINGS_KEYS = [
   'font', 'theme', 'textSize', 'pageWidth', 'viewMode', 'voice', 'speed', 'endChapterPause',
   // Expressive GPU voice (opt-in, global — same persistence model as voice/speed above).
   'ttsEngine', 'expressiveVoice', 'exaggeration', 'cfgWeight', 'temperature', 'speedFactor',
+  // BYO-reference voice cloning: which mode the persisted expressiveVoice was picked under,
+  // so a persisted clone re-selects correctly (a predefined id and a clone filename could
+  // otherwise collide on re-select).
+  'expressiveVoiceMode',
 ];
 
 function createWindow() {
@@ -216,7 +220,7 @@ ipcMain.handle('pick-file-bytes', async () => {
 // res.wav is the typed array carried in the utilityProcess message; Electron
 // structured-clones it across the renderer IPC boundary, so return it as-is.
 ipcMain.handle('synthesize', async (_evt, {
-  text, voice, speed, engine, expressiveVoice, exaggeration, cfgWeight, temperature, speedFactor, serverUrl,
+  text, voice, speed, engine, expressiveVoice, expressiveVoiceMode, exaggeration, cfgWeight, temperature, speedFactor, serverUrl,
 }) => {
   voice = voice || 'af_heart';
   const normalized = normalizeTTS(text);
@@ -230,15 +234,18 @@ ipcMain.handle('synthesize', async (_evt, {
   if (engine === 'expressive') {
     const p = mergeExpressiveParams({ exaggeration, cfgWeight, temperature, speedFactor });
     const url = serverUrl || EXPRESSIVE_DEFAULT_URL;
-    // The cache key must fold in voice + every generation param, so changing any knob
-    // re-synthesizes rather than serving a stale clip. (speed is the Kokoro slider, unused
-    // here — Chatterbox pacing is cfg_weight/speed_factor.) Note: with temperature > 0 the
-    // server is non-deterministic; we cache the first sample and reuse it for consistency.
-    const cacheVoice = `${expressiveVoice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
+    const mode = expressiveVoiceMode === 'clone' ? 'clone' : 'predefined';
+    // The cache key must fold in mode + voice + every generation param, so changing any knob
+    // (or switching predefined<->clone) re-synthesizes rather than serving a stale clip, and a
+    // predefined id and a cloned reference filename that happen to share a name can't collide.
+    // (speed is the Kokoro slider, unused here — Chatterbox pacing is cfg_weight/speed_factor.)
+    // Note: with temperature > 0 the server is non-deterministic; we cache the first sample and
+    // reuse it for consistency.
+    const cacheVoice = `${mode}:${expressiveVoice || 'default'} e${p.exaggeration} c${p.cfgWeight} t${p.temperature} s${p.speedFactor}`;
     const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
     if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
     try {
-      const out = await synthesizeRemote({ text: normalized, voice: expressiveVoice, params: p, url });
+      const out = await synthesizeRemote({ text: normalized, voice: expressiveVoice, mode, params: p, url });
       await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
       return { wav: out.wav, sampleRate: out.sampleRate };
     } catch (err) {
@@ -270,6 +277,58 @@ ipcMain.handle('expressive:health', async (_evt, url) => {
   } finally {
     clearTimeout(timer);
   }
+});
+
+// List the user's uploaded reference clips ("My Voices") from the expressive server, so the
+// Voice panel can render them as selectable clone voices. Same short-timeout, never-throw shape
+// as expressive:health — a dead/unreachable server must yield an empty list, not a crash or a
+// hung panel (My Voices simply stays empty; predefined voices are unaffected).
+ipcMain.handle('expressive:references', async (_evt, url) => {
+  const base = url || EXPRESSIVE_DEFAULT_URL;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/get_reference_files`, { signal: controller.signal });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => null);
+    return parseReferenceList(data);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+// Proxy the multipart reference upload — the renderer reads the picked file to bytes and never
+// touches the network itself (mirrors library:add). Field name 'file' per the server contract.
+// Any failure (server down, bad file, network) surfaces as a rejected promise with a short
+// message the renderer can show gently; it must never crash the app.
+ipcMain.handle('expressive:uploadReference', async (_evt, bytes, fileName, url) => {
+  const base = url || EXPRESSIVE_DEFAULT_URL;
+  try {
+    const fd = new FormData();
+    fd.append('file', new Blob([Buffer.from(bytes)]), fileName);
+    const res = await fetch(`${base.replace(/\/$/, '')}/upload_reference`, { method: 'POST', body: fd });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`upload failed (${res.status}): ${detail.slice(0, 200)}`);
+    }
+    return { ok: true };
+  } catch (err) {
+    throw new Error(err && err.message ? err.message : 'reference upload failed');
+  }
+});
+
+// Native file picker for a reference audio clip (.wav/.mp3), returning raw bytes — the
+// add-a-voice counterpart to pick-file-bytes (which is book-format-filtered).
+ipcMain.handle('pick-audio-bytes', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Add a reference voice', properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['wav', 'mp3'] }],
+  });
+  if (res.canceled || !res.filePaths[0]) return null;
+  const fp = res.filePaths[0];
+  return { bytes: await fs.readFile(fp), fileName: path.basename(fp) };
 });
 
 app.whenReady().then(() => {

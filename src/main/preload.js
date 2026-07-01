@@ -17,12 +17,22 @@ contextBridge.exposeInMainWorld('reader', {
 
   // Renderer calls reader.synthesize(text, { voice, speed }); we send ONE object so
   // the main handler can destructure { text, voice, speed } — keep this shape everywhere.
-  // For the expressive engine, opts also carries { engine, expressiveVoice, exaggeration,
-  // cfgWeight, temperature, speedFactor, serverUrl } — all forwarded as-is via the spread.
+  // For the expressive engine, opts also carries { engine, expressiveVoice, expressiveVoiceMode,
+  // exaggeration, cfgWeight, temperature, speedFactor, serverUrl } — all forwarded as-is via the spread.
   synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
 
   // Reachability probe for the optional expressive GPU server (Voice-panel engine toggle).
   expressiveHealth: (url) => ipcRenderer.invoke('expressive:health', url),
+
+  // BYO-reference voice cloning: list uploaded reference clips ("My Voices"), and upload a
+  // new one (bytes read in the renderer via pickAudioBytes; the multipart POST happens in
+  // main so the renderer never touches the network directly).
+  expressiveReferences: (url) => ipcRenderer.invoke('expressive:references', url),
+  expressiveUploadReference: (bytes, fileName, url) =>
+    ipcRenderer.invoke('expressive:uploadReference', bytes, fileName, url),
+
+  // File picker for a reference audio clip (.wav/.mp3), for the "Add a voice" flow.
+  pickAudioBytes: () => ipcRenderer.invoke('pick-audio-bytes'),
 
   // Library (Phase 3)
   libraryList: () => ipcRenderer.invoke('library:list'),
