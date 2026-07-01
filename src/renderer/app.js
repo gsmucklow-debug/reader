@@ -34,11 +34,13 @@ const state = {
   currentBookId: null,        // Phase 3: open book's library id (for progress saves)
   // Expressive GPU voice (optional, global — same persistence model as voice/speed above):
   ttsEngine: 'kokoro',         // 'kokoro' | 'expressive'
-  expressiveVoice: 'Axel.wav', // server predefined_voice_id (filename)
+  expressiveVoice: 'Axel.wav', // server predefined_voice_id (filename), OR a clone reference filename
+  expressiveVoiceMode: 'predefined', // 'predefined' | 'clone' — which list expressiveVoice came from
   exaggeration: 0.5,
   cfgWeight: 0.3,
   temperature: 0.75,
   speedFactor: 1.0,
+  myVoices: [], // BYO-reference clone voices fetched from the server on panel-open (filenames)
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -74,6 +76,7 @@ function synthOpts() {
       speed: state.speed,
       engine: 'expressive',
       expressiveVoice: state.expressiveVoice,
+      expressiveVoiceMode: state.expressiveVoiceMode,
       exaggeration: state.exaggeration,
       cfgWeight: state.cfgWeight,
       temperature: state.temperature,
@@ -678,41 +681,159 @@ const EXPRESSIVE_VOICES = [
 ];
 
 const expressiveVoiceListEl = document.getElementById('expressive-voice-list');
+
+// One row for one voice, shared by both the "My Voices" (clone) and predefined groups —
+// only the click handlers' `mode` differs. `top`/preview button are predefined-only bits
+// folded in via optional args so the clone rows stay simple (no ▶ preview for v1).
+function makeVoiceRow(id, label, fullLabel, mode, { withPreview } = {}) {
+  const row = document.createElement('div');
+  row.className = 'voice-row';
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'voice-pick';
+  pick.dataset.voice = id;
+  pick.dataset.voiceMode = mode;
+  pick.textContent = label;
+  pick.setAttribute('aria-label', fullLabel);
+  pick.addEventListener('click', () => { setExpressiveVoice(id, mode); markActiveExpressiveVoice(); });
+  row.append(pick);
+  if (withPreview) {
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.className = 'voice-preview';
+    prev.title = 'Preview';
+    prev.setAttribute('aria-label', `Preview ${fullLabel}`);
+    prev.textContent = '▶';
+    prev.addEventListener('click', (e) => { e.stopPropagation(); previewExpressiveVoice(id, mode); });
+    row.appendChild(prev);
+  }
+  return row;
+}
+
+// Predefined voices are a static list (unchanged DOM shape/selectors — smoke drives
+// `#expressive-voice-list button.voice-pick[data-voice="Alice.wav"]` directly).
 function buildExpressiveVoiceList() {
   expressiveVoiceListEl.innerHTML = '';
+  renderMyVoicesGroup(); // "My Voices" + "＋ Add a voice" always sits above the predefined list
   for (const grp of EXPRESSIVE_VOICES) {
     const h = document.createElement('div');
     h.className = 'voice-group';
     h.textContent = grp.group;
     expressiveVoiceListEl.appendChild(h);
     for (const v of grp.items) {
-      const row = document.createElement('div');
-      row.className = 'voice-row';
       const fullLabel = `${v.label} — ${grp.group}`;
-      const pick = document.createElement('button');
-      pick.type = 'button';
-      pick.className = 'voice-pick';
-      pick.dataset.voice = v.id;
-      pick.textContent = v.label;
-      pick.setAttribute('aria-label', fullLabel);
-      pick.addEventListener('click', () => { setExpressiveVoice(v.id); markActiveExpressiveVoice(); });
-      const prev = document.createElement('button');
-      prev.type = 'button';
-      prev.className = 'voice-preview';
-      prev.title = 'Preview';
-      prev.setAttribute('aria-label', `Preview ${fullLabel}`);
-      prev.textContent = '▶';
-      prev.addEventListener('click', (e) => { e.stopPropagation(); previewExpressiveVoice(v.id); });
-      row.append(pick, prev);
-      expressiveVoiceListEl.appendChild(row);
+      expressiveVoiceListEl.appendChild(
+        makeVoiceRow(v.id, v.label, fullLabel, 'predefined', { withPreview: true })
+      );
     }
   }
   markActiveExpressiveVoice();
 }
 function markActiveExpressiveVoice() {
   for (const b of expressiveVoiceListEl.querySelectorAll('.voice-pick')) {
-    b.classList.toggle('active', b.dataset.voice === state.expressiveVoice);
+    b.classList.toggle(
+      'active',
+      b.dataset.voice === state.expressiveVoice && b.dataset.voiceMode === state.expressiveVoiceMode
+    );
   }
+}
+
+// --- BYO-reference voice cloning: "My Voices" group + "＋ Add a voice" ------------------
+// Dynamic (server-held) — rendered fresh each time buildExpressiveVoiceList() runs (boot,
+// with an empty list) and again after a successful references fetch/upload (panel-open,
+// or right after an upload completes) via refreshMyVoices() below.
+function renderMyVoicesGroup() {
+  const h = document.createElement('div');
+  h.className = 'voice-group';
+  h.textContent = 'My Voices';
+  expressiveVoiceListEl.appendChild(h);
+  for (const filename of state.myVoices) {
+    const label = filename.replace(/\.(wav|mp3)$/i, '');
+    expressiveVoiceListEl.appendChild(
+      makeVoiceRow(filename, label, `${label} — My Voices`, 'clone')
+    );
+  }
+  const addRow = document.createElement('div');
+  addRow.className = 'voice-row';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.id = 'add-voice-btn';
+  addBtn.className = 'voice-add';
+  addBtn.textContent = '＋ Add a voice';
+  addBtn.addEventListener('click', openAddVoicePopover);
+  addRow.appendChild(addBtn);
+  expressiveVoiceListEl.appendChild(addRow);
+}
+
+// Fetch the server's reference list and re-render the whole voice list (My Voices +
+// predefined) so newly-uploaded voices appear and the persisted selection (if a clone)
+// can finally be marked active once its button exists. Never throws — a dead server just
+// leaves My Voices empty, exactly like the expressive:health probe.
+async function refreshMyVoices() {
+  if (!window.reader || !window.reader.expressiveReferences) return;
+  try {
+    state.myVoices = await window.reader.expressiveReferences();
+  } catch (_) {
+    state.myVoices = [];
+  }
+  buildExpressiveVoiceList(); // rebuild folds markActiveExpressiveVoice() back in
+}
+
+// Inline "name it" popover for the Add-a-voice flow. window.prompt() is NOT usable in
+// Electron (throws) — this is a small inline text input instead, mirroring the rest of
+// the app's popover pattern. One at a time: closes if already open.
+let addVoicePopoverEl = null;
+function closeAddVoicePopover() {
+  if (addVoicePopoverEl) { addVoicePopoverEl.remove(); addVoicePopoverEl = null; }
+}
+function openAddVoicePopover() {
+  closeAddVoicePopover();
+  const wrap = document.createElement('div');
+  wrap.className = 'add-voice-popover';
+  wrap.innerHTML = `
+    <p class="add-voice-hint">Only add voices you have permission to use.</p>
+    <p class="add-voice-hint">Best result: ~10–20s of clean, single-speaker speech.</p>
+    <input type="text" class="add-voice-name" placeholder="Name this voice" maxlength="60" />
+    <div class="add-voice-actions">
+      <button type="button" class="add-voice-pick">Choose file…</button>
+      <button type="button" class="add-voice-cancel">Cancel</button>
+    </div>
+    <p class="add-voice-status" hidden></p>
+  `;
+  const nameInput = wrap.querySelector('.add-voice-name');
+  const statusEl = wrap.querySelector('.add-voice-status');
+  const setStatus = (msg, isError) => {
+    statusEl.hidden = !msg;
+    statusEl.textContent = msg || '';
+    statusEl.classList.toggle('is-error', !!isError);
+  };
+  wrap.querySelector('.add-voice-cancel').addEventListener('click', closeAddVoicePopover);
+  wrap.querySelector('.add-voice-pick').addEventListener('click', async () => {
+    if (!window.reader || !window.reader.pickAudioBytes) return;
+    try {
+      const picked = await window.reader.pickAudioBytes();
+      if (!picked) return; // user cancelled the dialog
+      const typedName = nameInput.value.trim();
+      const ext = (picked.fileName.match(/\.[^.]+$/) || ['.wav'])[0];
+      // Sanitize the display name into a safe filename the server will store and Reader
+      // will later select/synthesize with as reference_audio_filename.
+      const safeName = (typedName || picked.fileName.replace(/\.[^.]+$/, ''))
+        .replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'my-voice';
+      const uploadName = `${safeName}${ext}`;
+      setStatus('Uploading…', false);
+      await window.reader.expressiveUploadReference(picked.bytes, uploadName);
+      await refreshMyVoices();
+      setExpressiveVoice(uploadName, 'clone');
+      markActiveExpressiveVoice();
+      closeAddVoicePopover();
+    } catch (e) {
+      console.warn('[Reader] add-voice failed:', e);
+      setStatus('Could not add this voice — check the server and try again.', true);
+    }
+  });
+  expressiveSectionEl.appendChild(wrap);
+  addVoicePopoverEl = wrap;
+  nameInput.focus();
 }
 
 // ▶ preview: play a short sample in the given voice. Ducks narration first (the
@@ -732,7 +853,9 @@ async function previewVoice(voiceId) {
 
 // ▶ preview for an expressive voice: same duck/one-shot pattern, but posts through the
 // expressive engine with the CURRENT sliders so the preview matches what play will sound like.
-async function previewExpressiveVoice(voiceId) {
+// `mode` defaults to 'predefined' (the only mode with a ▶ button in v1 — My Voices rows are
+// built without `withPreview`, but this stays mode-aware so it never mis-shapes a clone request).
+async function previewExpressiveVoice(voiceId, mode = 'predefined') {
   if (state.player && state.player.isPlaying()) state.player.pause(); // duck narration
   updatePlayButton();
   await resumeAudio();
@@ -741,6 +864,7 @@ async function previewExpressiveVoice(voiceId) {
     const { wav, sampleRate } = await window.reader.synthesize(SAMPLE_TEXT, {
       engine: 'expressive',
       expressiveVoice: voiceId,
+      expressiveVoiceMode: mode,
       voice: state.voice,
       speed: state.speed,
       exaggeration: state.exaggeration,
@@ -791,7 +915,12 @@ engineToggleEl.addEventListener('click', (e) => {
 
 // On Voice-panel open, probe the expressive server so a dead server disables the segment
 // with a hint instead of letting the user pick a backend that will just fall back silently.
-document.getElementById('voice-btn').addEventListener('click', checkExpressiveHealth);
+// Also refresh "My Voices" (independent try/catch inside — a dead server just leaves it
+// empty, it must never block or crash the health probe above).
+document.getElementById('voice-btn').addEventListener('click', () => {
+  checkExpressiveHealth();
+  refreshMyVoices();
+});
 async function checkExpressiveHealth() {
   const expressiveBtn = engineToggleEl.querySelector('button[data-engine="expressive"]');
   if (!window.reader || !window.reader.expressiveHealth) return;
@@ -835,6 +964,7 @@ function gatherSettings() {
     endChapterPause: state.endChapterPause,
     ttsEngine: state.ttsEngine,
     expressiveVoice: state.expressiveVoice,
+    expressiveVoiceMode: state.expressiveVoiceMode,
     exaggeration: state.exaggeration,
     cfgWeight: state.cfgWeight,
     temperature: state.temperature,
@@ -887,6 +1017,10 @@ function applySettings(s) {
   // the first play.
   if (typeof s.expressiveVoice === 'string') {
     state.expressiveVoice = s.expressiveVoice;
+    // A persisted clone selection can't light up yet if My Voices hasn't been fetched
+    // (panel-open only) — refreshMyVoices() re-runs markActiveExpressiveVoice() once the
+    // button exists. Harmless no-op if the persisted voice is predefined.
+    state.expressiveVoiceMode = (s.expressiveVoiceMode === 'clone') ? 'clone' : 'predefined';
     markActiveExpressiveVoice();
   }
   if (Number.isFinite(s.exaggeration)) {
@@ -1089,8 +1223,9 @@ function setEngine(engine) {
 // engine-toggle button's disabled state (which correctly blocks a real click when the
 // expressive server is unreachable — see the panel-open health check).
 window.__test_setEngine = setEngine;
-function setExpressiveVoice(voiceId) {
+function setExpressiveVoice(voiceId, mode = 'predefined') {
   state.expressiveVoice = voiceId || 'Axel.wav';
+  state.expressiveVoiceMode = mode === 'clone' ? 'clone' : 'predefined';
   if (state.player) state.player.reload();
   saveSettings();
 }
