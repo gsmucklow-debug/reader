@@ -8,6 +8,14 @@ const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
 const { makeLibrary } = require('./library');
+const { synthesizeRemote, wavSampleRate } = require('./expressive-tts');
+
+// SPIKE (2026-07-01): the optional expressive GPU voice. When READER_EXPRESSIVE_URL points at a
+// running Chatterbox server, synth routes there (cached under the 'chatterbox' engine) and falls
+// back to Kokoro on any failure. Unset → Reader is 100% the offline Kokoro default. Env-gated for
+// the spike only; a Voice-panel toggle + companion installer are Phase 2 (if the by-ear gate passes).
+const EXPRESSIVE_URL = process.env.READER_EXPRESSIVE_URL || null;
+const EXPRESSIVE_VOICE = process.env.READER_EXPRESSIVE_VOICE || undefined; // a predefined_voice_id
 
 let library = null;
 function getLibrary() {
@@ -204,6 +212,24 @@ ipcMain.handle('synthesize', async (_evt, { text, voice, speed }) => {
   voice = voice || 'af_heart';
   const normalized = normalizeTTS(text);
   clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
+
+  // Optional expressive GPU backend (spike). Cache under the 'chatterbox' engine namespace so
+  // its clips never collide with Kokoro's. ANY failure (server down, CUDA error, timeout) falls
+  // through to the in-process Kokoro engine below — narration must never break.
+  if (EXPRESSIVE_URL) {
+    const cacheVoice = EXPRESSIVE_VOICE || 'default'; // stable key per chosen server voice
+    const exHit = await clipCache.get(normalized, cacheVoice, speed, 'chatterbox');
+    if (exHit) return { wav: exHit, sampleRate: wavSampleRate(exHit) };
+    try {
+      const out = await synthesizeRemote({ text: normalized, voice: EXPRESSIVE_VOICE, url: EXPRESSIVE_URL });
+      await clipCache.put(normalized, cacheVoice, speed, out.wav, 'chatterbox');
+      return { wav: out.wav, sampleRate: out.sampleRate };
+    } catch (err) {
+      console.warn('[expressive] falling back to Kokoro:', err && err.message);
+      // fall through to Kokoro
+    }
+  }
+
   const hit = await clipCache.get(normalized, voice, speed);
   if (hit) return { wav: hit, sampleRate: 24000 }; // Kokoro is fixed 24 kHz
   const res = await ttsRequest({ type: 'synthesize', text: normalized, voice, speed });

@@ -15,6 +15,17 @@ test('clipKey depends on text, voice, AND speed', () => {
   assert.match(base, /^[0-9a-f]{16,}\.wav$/);                          // filename-safe
 });
 
+test('clipKey is engine-aware: kokoro is back-compat, other engines are distinct', () => {
+  const base = clipKey('Hello world.', 'af_heart', 1);
+  // Default / 'kokoro' engine must be byte-identical to the pre-engine key, so the
+  // user's existing warm Kokoro clips stay hits after this change.
+  assert.strictEqual(base, clipKey('Hello world.', 'af_heart', 1, undefined));
+  assert.strictEqual(base, clipKey('Hello world.', 'af_heart', 1, 'kokoro'));
+  // A different engine (e.g. the GPU Chatterbox backend) is different audio for the
+  // same voice/speed/text and MUST NOT collide with the Kokoro clip.
+  assert.notStrictEqual(base, clipKey('Hello world.', 'af_heart', 1, 'chatterbox'));
+});
+
 test('makeCache round-trips bytes and never fails the synth path', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'clip-cache-test-'));
   try {
@@ -30,6 +41,15 @@ test('makeCache round-trips bytes and never fails the synth path', async () => {
 
     // A different speed is a cache miss for the same text+voice (independent combos).
     assert.strictEqual(await cache.get('hello', 'af_heart', 1.25), null);
+
+    // A different engine is a cache miss for the same text/voice/speed — the Kokoro
+    // clip above must not be served as if it were Chatterbox audio.
+    assert.strictEqual(await cache.get('hello', 'af_heart', 1, 'chatterbox'), null);
+    await cache.put('hello', 'af_heart', 1, bytes, 'chatterbox');
+    const gotCb = await cache.get('hello', 'af_heart', 1, 'chatterbox');
+    assert.ok(gotCb && gotCb.equals(bytes));               // chatterbox clip round-trips
+    const gotKokoro = await cache.get('hello', 'af_heart', 1); // kokoro clip still intact
+    assert.ok(gotKokoro && gotKokoro.equals(bytes));
 
     // No temp files left behind after the atomic rename.
     const leftover = (await fs.readdir(dir)).filter((f) => f.endsWith('.tmp'));
