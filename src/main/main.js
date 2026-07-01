@@ -374,39 +374,31 @@ function ensureVoiceEngineRunning(url, dir) {
   return voiceEngine.starting;
 }
 
-// Stop the Voice Engine WE started, GPU-safely. The RTX driver can wedge (needing a reinstall)
-// if the CUDA process is force-killed mid-inference, so the order matters:
-//   1. mark `stopping` so no NEW expressive synth is sent (the synth handler falls back to Kokoro)
-//   2. wait for any in-flight synth to finish, so the GPU goes IDLE
-//   3. ask the process to close cleanly -- `taskkill` WITHOUT /F -- so uvicorn runs its lifespan
-//      shutdown and releases CUDA (server.py has a shutdown hook; engine.py empties the cache)
-//   4. escalate to force (`/F`) ONLY if it won't exit in the grace window -- and by then it is
-//      idle, so a force kill can't corrupt a live kernel.
-// `/T` kills the tree (start.py spawns the child uvicorn that actually listens on :8004).
+// Stop the Voice Engine WE started, as GPU-safely as we can. The one real safety step is
+// DRAIN-TO-IDLE: force-killing a CUDA process mid-kernel is what can wedge the driver; killing an
+// IDLE one is safe (the driver reclaims the context on process death). So:
+//   1. mark `stopping` -> the synth handler stops sending new GPU work (falls back to Kokoro)
+//   2. wait for any in-flight synth to finish, so the GPU goes idle, then a brief settle
+//   3. force-kill the tree. We DON'T try a no-/F "graceful" taskkill first: this process is
+//      spawned windowless (windowsHide + stdio:'ignore'), so it has no window to receive the
+//      WM_CLOSE a no-/F taskkill sends -- it'd survive and get /F'd anyway, only adding a quit
+//      stall. `/T` kills the tree (start.py's child uvicorn is the actual :8004 listener).
+// NOTE: this reduces the kill-mid-inference vector only. It does NOT make heavy inference on a
+// bleeding-edge GPU/driver stack safe -- that's a current-driver + watched-run concern, not code.
 // Idempotent: nulls `child` first, so a second call (e.g. before-quit racing) is a no-op.
-async function stopVoiceEngine({ drainMs = 8000, graceMs = 6000 } = {}) {
+async function stopVoiceEngine({ drainMs = 8000 } = {}) {
   const child = voiceEngine.child;
   const wasOurs = voiceEngine.startedByUs;
   voiceEngine.child = null;
   voiceEngine.startedByUs = false;
   if (!child || !child.pid || !wasOurs) return;
   voiceEngine.stopping = true;
-  let exited = child.exitCode !== null;
-  child.once('exit', () => { exited = true; });
   try {
-    // 1+2: let the GPU go idle before we touch the process.
     await pollUntilReady({
       healthFn: () => voiceEngine.inFlight === 0, intervalMs: 200, timeoutMs: drainMs, sleepFn: sleep,
     });
-    // 3: graceful close (no /F) -- uvicorn gets to run shutdown + free CUDA.
-    try { spawn('taskkill', ['/pid', String(child.pid), '/T'], { windowsHide: true, stdio: 'ignore' }); } catch {}
-    await pollUntilReady({
-      healthFn: () => exited, intervalMs: 250, timeoutMs: graceMs, sleepFn: sleep,
-    });
-    // 4: still alive after the grace window? It's idle now, so a force kill is safe.
-    if (!exited) {
-      try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
-    }
+    await sleep(300); // brief settle so the last CUDA kernel has fully returned before we terminate
+    try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
   } finally {
     voiceEngine.stopping = false;
   }
@@ -495,7 +487,7 @@ app.on('before-quit', (e) => {
   if (!(voiceEngine.startedByUs && voiceEngine.child)) return;
   e.preventDefault();
   engineQuitCleanup = true;
-  stopVoiceEngine({ drainMs: 4000, graceMs: 4000 }).finally(() => app.quit());
+  stopVoiceEngine({ drainMs: 4000 }).finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
