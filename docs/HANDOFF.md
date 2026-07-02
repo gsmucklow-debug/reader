@@ -475,10 +475,64 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     BYO-reference, file-picker, `voice_mode:'clone'`; **guardrail: never bundle/ship cloned voices**
     (personal use only; celebrity clones are the user's private files). (c) **Windows/NVIDIA only** so
     far — the M5 path is a *different runtime* (MLX/CoreML), not a port; deferred with the Mac build.
+- [~] **Voice cloning + Reader-managed Voice Engine + a night of fixes — built & planner-verified on
+  branch `expressive-voice-cloning`; NOT merged (2026-07-01).** 19 commits (`2be0849` → `b5a2610`) on top
+  of the merged predefined-voice UI. 145/145 unit + smoke green throughout. **The user ran the packaged
+  build all evening; it now auto-starts the GPU engine, plays preset + cloned voices, and reads with
+  gap-free playback — no terminal anywhere.** Shipped this session:
+  - **BYO-reference voice cloning** (`voice_mode:'clone'`): a **My Voices** group + **＋ Add a voice**
+    (pick `.wav`/`.mp3` → name → upload). **Upload-only + Reader-local** — Reader never lists the server's
+    `reference_audio/` dir (a curation boundary the user asked for); the list persists in
+    `expressiveMyVoices`. Per-row **rename (✎, local alias)** + **remove (✕, local-list only)**. Uses the
+    server's **sanitized saved filename** from the upload response (the server turns spaces→underscores;
+    sending the un-sanitized name 404'd → silent Kokoro fallback — root-caused via the server log). Real
+    per-file upload errors now surface in the popover.
+  - **Reader-managed Voice Engine (fully automatic, Windows-only)** —
+    [`plans/phase-voice-engine-autolaunch.md`](./plans/phase-voice-engine-autolaunch.md). Switching to
+    Expressive **auto-detects** the Chatterbox folder (`%USERPROFILE%\Chatterbox-TTS-Server` + Downloads/
+    Desktop/Documents), **spawns the server itself** (`python_embedded\python.exe server.py` — NOT
+    `start.py`, which is a system-python launcher — with `python_embedded` on PATH so native DLLs load),
+    polls health (≤180s), reuses an already-running server, and **stops it on quit only if Reader started
+    it**. Testable core (`src/main/voice-engine.js`: `engineCommand`/`validateEngineDir`/`pollUntilReady`/
+    `detectEngineDir`) is unit-tested; the spawn/kill glue is main.js. Server stdout → `userData/voice-engine.log`.
+  - **⚠️ CRASH SAFETY (a real incident):** the user's **RTX 5070 Ti driver wedged and needed a reinstall.**
+    Most likely cause = heavy inference on the **bleeding-edge Blackwell + CUDA 12.8/cu128 stack**, not our
+    code — but our old `taskkill /F` force-killing the CUDA process mid-inference was a plausible contributor.
+    Shutdown is now **drain-to-idle**: block new synth (`voiceEngine.stopping` → Kokoro fallback), wait for
+    in-flight synth to finish so the GPU is idle, brief settle, *then* kill (force-killing an **idle** CUDA
+    process is safe; the wedge risk is mid-kernel). before-quit defers the real quit until the async stop
+    finishes (capped). **This reduces the kill-mid-op vector ONLY — it does NOT make the inference stack
+    stable. If it crashes again, that's the driver/framework; update the NVIDIA driver + do a watched
+    `nvidia-smi` run.** (Advisor-corrected: the earlier "graceful no-/F taskkill" was inert on a windowless
+    process — dropped.)
+  - **Playback:** prefetch depth **3 → 8** (maxClips 64) so the GPU voice doesn't gap between sentences —
+    the server page plays one continuous file, Reader stitches per-sentence clips, and Chatterbox's slower/
+    variable per-sentence latency (long sentences worst) underran the Kokoro-tuned depth. **UI:** voice grid
+    fills the full width (was capped 960px); long clone names no longer overflow onto the ✎/✕ buttons
+    (underscores shown as spaces).
+  - **Reference-audio format (from the server code):** frequency is irrelevant (server resamples); the real
+    gate is decodability + a **30s max duration** (`max_reference_duration_sec`). Safe format = **mono
+    16-bit PCM WAV, ~10–20s**. (A 6-min clip = the "won't import" the user hit.)
+  - **The user runs the packaged `.exe`, not `npm start`** (they will not use a terminal — hard requirement).
+    Every change this session was shipped by rebuilding `dist/Reader-0.1.0-setup.exe` (NSIS). **Latest build
+    22:25.** Any change needs a rebuild for the user to see it.
 
 ---
 
 ## Next up
+
+> **▶ RESUME HERE (2026-07-01, end of a long session; user's Claude usage ran out — back in ~2 days).**
+> Everything works end-to-end on branch **`expressive-voice-cloning`** (19 commits, 145/145 + smoke green,
+> packaged `.exe` rebuilt 22:25), **NOT merged to master**. Three steps to pick up:
+> 1. **Merge `expressive-voice-cloning` → master** (it's verified) and fold this session's "What's done"
+>    entry into the merged record. Clean fast-forward expected off `4faef51`.
+> 2. **User by-ear pass** — clone/preset voice quality, and whether the prefetch 3→8 bump killed the
+>    inter-sentence pauses. (Also the open **crash-safety** caveat: this reduced the kill-mid-op vector
+>    only; a driver update + watched `nvidia-smi` run is the real GPU-stability gate.)
+> 3. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
+>    the user's idea; they'll run a local LLM). That's the agreed next feature.
+> **Hard constraint reconfirmed all session: the user will NOT use a terminal** — ship every change as a
+> rebuilt double-click `.exe`, never "run `npm start`."
 
 **Phases 2, 2.5, and 2.6 are built & planner-verified on Windows (Phase 2.6 also picked up two
 user-reported bug fixes). The voice-latency spike has been run; findings recorded (GPU = dead end; the
@@ -661,6 +715,22 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 - Premium cloud voice as an optional toggle — possible future phase.
 - Couch/tablet listening (serve audio from PC over wifi) — possible future phase.
 - Bookmarks / notes — deferred enhancement to the library.
+- **Pronunciation & expression via a local-LLM pre-processor (next planned feature; designed-in-convo
+  2026-07-01, plan deferred — user's Claude usage ran out).** The problem: heteronyms like "read"/"reading"
+  (reed vs red) mispronounce inconsistently, and a **static respelling map can't disambiguate context**
+  ("read" is present *or* past). Chatterbox takes plain text — no phoneme/SSML control — so the only lever
+  is changing the text the engine receives. **The idea (user's, and it's the right one):** a **local LLM**
+  (on the user's 5070 Ti) scans a book once and emits **structured annotations** — `{word, position,
+  respelling, expression-intensity}` — **NOT rewritten prose** (keeps display text pristine; stops the LLM
+  editing the user's writing; validate against the original). Reader applies respellings **at synth time**
+  (display unchanged — it already separates display-text from synth-text via `tts-normalize.js`) and
+  modulates Chatterbox's **`exaggeration` per sentence** for expression (base Chatterbox has **no inline
+  `<laugh>`/`<sigh>` tags** — per-request intensity is the only expression lever). **Cache per book.** This
+  is the smart evolution of the long-planned "pronunciation overrides (sounds-like respelling)" item.
+  Two safe layers to fold in: a **global** sounds-like map for always-fixes (`reading→reeding` — the verb is
+  always "reeding"; the model saying "redding" is it reaching for the UK town — plus names/terms), and a
+  **per-word manual override** as the guaranteed catch-all. **User confirmed they'd run a local LLM.** Write
+  the full plan next session.
 
 ---
 
