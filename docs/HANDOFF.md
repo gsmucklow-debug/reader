@@ -526,12 +526,14 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > **▶ RESUME HERE (updated 2026-07-02).** The cloning + auto-launch + crash-safety session is now
 > **MERGED to master** (clean fast-forward `4faef51 → 357b7c4`, branch deleted, 145/145 re-verified).
 > Everything works end-to-end; packaged `.exe` was rebuilt 2026-07-01 22:25 (rebuild before the next
-> listen-test if any source changed since). Two steps left to pick up:
-> 1. **User by-ear pass** — clone/preset voice quality, and whether the prefetch 3→8 bump killed the
->    inter-sentence pauses. (Also the open **crash-safety** caveat: this reduced the kill-mid-op vector
->    only; a driver update + watched `nvidia-smi` run is the real GPU-stability gate.)
-> 2. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
+> listen-test if any source changed since).
+> **✅ User by-ear pass done (2026-07-02): "all looks and sounds good"** — clone + preset voice quality
+> confirmed, and the prefetch 3→8 bump killed the inter-sentence gaps. That gate is closed.
+> Next:
+> 1. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
 >    the user's idea; they'll run a local LLM). That's the agreed next feature.
+> 2. **Still open (not blocking): GPU-stability gate** — the crash-safety work reduced the kill-mid-op
+>    vector only; a driver update + a watched `nvidia-smi` run remains the real GPU-stability check.
 > **Hard constraint reconfirmed all session: the user will NOT use a terminal** — ship every change as a
 > rebuilt double-click `.exe`, never "run `npm start`."
 
