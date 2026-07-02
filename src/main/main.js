@@ -8,6 +8,7 @@ const os = require('node:os');
 const { parseEpub } = require('../parse/epub');
 const { makeCache } = require('./clip-cache');
 const { normalizeTTS } = require('./tts-normalize');
+const { applyPronunciations } = require('./pronounce');
 const { makeLibrary } = require('./library');
 const { synthesizeRemote, wavSampleRate, expressiveCacheVoice } = require('./expressive-tts');
 const { mergeExpressiveParams } = require('./expressive-params');
@@ -241,10 +242,13 @@ ipcMain.handle('pick-file-bytes', async () => {
 // res.wav is the typed array carried in the utilityProcess message; Electron
 // structured-clones it across the renderer IPC boundary, so return it as-is.
 ipcMain.handle('synthesize', async (_evt, {
-  text, voice, speed, engine, expressiveVoice, expressiveVoiceMode, exaggeration, cfgWeight, temperature, speedFactor, serverUrl,
+  text, voice, speed, engine, expressiveVoice, expressiveVoiceMode, exaggeration, cfgWeight, temperature, speedFactor, serverUrl, pronunciations,
 }) => {
   voice = voice || 'af_heart';
-  const normalized = normalizeTTS(text);
+  // Pronunciation overrides first (display text stays pristine), then the existing #digit/all-caps
+  // normalization. The clip cache keys on this final string, so a changed map => cold miss =>
+  // correct re-synth, and both the Kokoro and expressive branches below inherit the fix for free.
+  const normalized = normalizeTTS(applyPronunciations(text, pronunciations || {}));
   clipCache ||= makeCache(path.join(app.getPath('userData'), 'clips'));
 
   // Optional expressive GPU backend. Routed purely on the renderer-sent `engine` flag (never

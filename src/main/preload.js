@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('reader', {
   // the main handler can destructure { text, voice, speed } — keep this shape everywhere.
   // For the expressive engine, opts also carries { engine, expressiveVoice, expressiveVoiceMode,
   // exaggeration, cfgWeight, temperature, speedFactor, serverUrl } — all forwarded as-is via the spread.
+  // opts may also carry { pronunciations } — the global sounds-like map, applied in main before normalize/cache-key.
   synthesize: (text, opts) => ipcRenderer.invoke('synthesize', { text, ...(opts || {}) }),
 
   // Reachability probe for the optional expressive GPU server (Voice-panel engine toggle).
