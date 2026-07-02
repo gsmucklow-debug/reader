@@ -475,9 +475,11 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     BYO-reference, file-picker, `voice_mode:'clone'`; **guardrail: never bundle/ship cloned voices**
     (personal use only; celebrity clones are the user's private files). (c) **Windows/NVIDIA only** so
     far — the M5 path is a *different runtime* (MLX/CoreML), not a port; deferred with the Mac build.
-- [~] **Voice cloning + Reader-managed Voice Engine + a night of fixes — built & planner-verified on
-  branch `expressive-voice-cloning`; NOT merged (2026-07-01).** 19 commits (`2be0849` → `b5a2610`) on top
-  of the merged predefined-voice UI. 145/145 unit + smoke green throughout. **The user ran the packaged
+- [x] **Voice cloning + Reader-managed Voice Engine + a night of fixes — built, planner-verified &
+  MERGED to `master` (built 2026-07-01; merged 2026-07-02).** 20 commits (`2be0849` → `357b7c4`, incl. the
+  handoff doc) on top of the merged predefined-voice UI. Merged via **clean fast-forward** (`4faef51 →
+  357b7c4`), branch `expressive-voice-cloning` deleted, **145/145 unit tests re-verified green on merged
+  master**. 145/145 unit + smoke were green throughout the build. **The user ran the packaged
   build all evening; it now auto-starts the GPU engine, plays preset + cloned voices, and reads with
   gap-free playback — no terminal anywhere.** Shipped this session:
   - **BYO-reference voice cloning** (`voice_mode:'clone'`): a **My Voices** group + **＋ Add a voice**
@@ -521,15 +523,14 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 
 ## Next up
 
-> **▶ RESUME HERE (2026-07-01, end of a long session; user's Claude usage ran out — back in ~2 days).**
-> Everything works end-to-end on branch **`expressive-voice-cloning`** (19 commits, 145/145 + smoke green,
-> packaged `.exe` rebuilt 22:25), **NOT merged to master**. Three steps to pick up:
-> 1. **Merge `expressive-voice-cloning` → master** (it's verified) and fold this session's "What's done"
->    entry into the merged record. Clean fast-forward expected off `4faef51`.
-> 2. **User by-ear pass** — clone/preset voice quality, and whether the prefetch 3→8 bump killed the
+> **▶ RESUME HERE (updated 2026-07-02).** The cloning + auto-launch + crash-safety session is now
+> **MERGED to master** (clean fast-forward `4faef51 → 357b7c4`, branch deleted, 145/145 re-verified).
+> Everything works end-to-end; packaged `.exe` was rebuilt 2026-07-01 22:25 (rebuild before the next
+> listen-test if any source changed since). Two steps left to pick up:
+> 1. **User by-ear pass** — clone/preset voice quality, and whether the prefetch 3→8 bump killed the
 >    inter-sentence pauses. (Also the open **crash-safety** caveat: this reduced the kill-mid-op vector
 >    only; a driver update + watched `nvidia-smi` run is the real GPU-stability gate.)
-> 3. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
+> 2. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
 >    the user's idea; they'll run a local LLM). That's the agreed next feature.
 > **Hard constraint reconfirmed all session: the user will NOT use a terminal** — ship every change as a
 > rebuilt double-click `.exe`, never "run `npm start`."
