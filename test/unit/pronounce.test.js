@@ -44,3 +44,18 @@ test('empty/absent map and empty text pass through', () => {
   assert.strictEqual(applyPronunciations('reading', null), 'reading');
   assert.strictEqual(applyPronunciations('', { reading: 'reeding' }), '');
 });
+
+test('prototype-chain word keys do not crash and are left untouched', () => {
+  assert.strictEqual(
+    applyPronunciations('the constructor toString hasOwnProperty here', { reading: 'reeding' }),
+    'the constructor toString hasOwnProperty here'
+  );
+});
+
+test('typographic apostrophe words are one token', () => {
+  assert.strictEqual(applyPronunciations('it’s fine', { it: 'x' }), 'it’s fine');
+});
+
+test('punctuation directly adjacent to a word is a clean boundary', () => {
+  assert.strictEqual(applyPronunciations('(reading)', { reading: 'reeding' }), '(reeding)');
+});

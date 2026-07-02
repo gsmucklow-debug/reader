@@ -25,7 +25,7 @@ function applyPronunciations(text, map) {
       while (j < n && WORD_CHAR.test(text[j])) j++;
       const word = text.slice(i, j);
       const respelling = map[word.toLowerCase()];
-      out += (respelling && respelling.trim()) ? respelling : word;
+      out += (typeof respelling === 'string' && respelling.trim()) ? respelling : word;
       i = j; // single pass: never re-scan a substituted respelling
     } else {
       out += text[i];
