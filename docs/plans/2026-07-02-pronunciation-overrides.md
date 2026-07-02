@@ -75,6 +75,21 @@ test('empty/absent map and empty text pass through', () => {
   assert.strictEqual(applyPronunciations('reading', null), 'reading');
   assert.strictEqual(applyPronunciations('', { reading: 'reeding' }), '');
 });
+
+test('prototype-chain word keys do not crash and are left untouched', () => {
+  assert.strictEqual(
+    applyPronunciations('the constructor toString hasOwnProperty here', { reading: 'reeding' }),
+    'the constructor toString hasOwnProperty here'
+  );
+});
+
+test('typographic apostrophe words are one token', () => {
+  assert.strictEqual(applyPronunciations('it’s fine', { it: 'x' }), 'it’s fine');
+});
+
+test('punctuation directly adjacent to a word is a clean boundary', () => {
+  assert.strictEqual(applyPronunciations('(reading)', { reading: 'reeding' }), '(reeding)');
+});
 ```
 
 **Step 2: Run to verify it fails**
@@ -111,8 +126,11 @@ function applyPronunciations(text, map) {
       let j = i + 1;
       while (j < n && WORD_CHAR.test(text[j])) j++;
       const word = text.slice(i, j);
+      // `typeof === 'string'` guard: map[...] reads through the prototype chain, so a word like
+      // "constructor"/"toString"/"hasOwnProperty" would otherwise return an inherited FUNCTION
+      // (truthy) and crash on .trim(). The guard also hardens against any non-string value.
       const respelling = map[word.toLowerCase()];
-      out += (respelling && respelling.trim()) ? respelling : word;
+      out += (typeof respelling === 'string' && respelling.trim()) ? respelling : word;
       i = j; // single pass: never re-scan a substituted respelling
     } else {
       out += text[i];
