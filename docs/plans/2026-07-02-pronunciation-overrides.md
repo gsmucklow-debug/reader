@@ -334,8 +334,14 @@ git commit -m "feat(renderer): wordAtOffset pure helper + wire script"
 
 **Files:**
 - Modify: `src/renderer/app.js` (state, `synthOpts`, `gatherSettings`, `applySettings`)
+- Modify: `src/main/main.js` (the `SETTINGS_KEYS` whitelist — REQUIRED, see Step 5)
 
 No new tests here (pure wiring; proven by the Task 6 smoke persistence + artifact checks). Each step is a small edit; run `npm test` at the end to confirm no regression.
+
+> **⚠️ Discovered during build:** `save-settings` in `main.js` filters the incoming object through a
+> `SETTINGS_KEYS` allowlist — any key not listed is silently dropped. `pronunciations` MUST be added
+> there (Step 5) or the map never persists and the whole feature fails to survive a restart. The
+> renderer-side `gatherSettings`/`applySettings` alone are not enough.
 
 **Step 1: Add state field**
 
@@ -391,16 +397,27 @@ In `applySettings(s)` (line ~1135), add alongside the other direct, side-effect-
 
 Follow the existing boot rule: set state directly, do NOT call `saveSettings()`/`reload()` here.
 
-**Step 5: Verify**
+**Step 5: Allow the key through the settings whitelist (`main.js`) — REQUIRED**
+
+In `src/main/main.js`, add `'pronunciations'` to the `SETTINGS_KEYS` array (the allowlist `save-settings`
+filters through). Without this the map is dropped on save and never persists:
+
+```js
+  // Global "sounds-like" pronunciation overrides { lowercasedWord: respelling }, applied at synth
+  // time (display text unchanged). Without this the map is dropped by the whitelist and never persists.
+  'pronunciations',
+```
+
+**Step 6: Verify**
 
 Run: `npm test`
-Expected: 145 passing.
+Expected: still green (162 with Tasks 1+3 tests present).
 
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
-git add src/renderer/app.js
-git commit -m "feat(renderer): thread pronunciations through synth opts + settings"
+git add src/renderer/app.js src/main/main.js
+git commit -m "feat(renderer): thread pronunciations through synth opts + settings (+ whitelist)"
 ```
 
 ---
@@ -616,6 +633,14 @@ Run: `npm run smoke`
 Expected: `SMOKE OK`, exit 0, with the three new `✓` lines. All prior assertions still pass.
 
 If the real right-click proves flaky headless (popover doesn't open because the caret landed on a gap), fall back to the seam for (a)/(b): `await win.evaluate(() => window.__test_setPronunciation('reading', 'reeding'))` then assert settings.json — and keep (c) as-is. Prefer the real right-click; use the seam only if needed.
+
+> **As-built:** a Playwright coordinate right-click was NOT usable — in the translated multi-column
+> paged view a `.sentence`'s box can straddle a hidden column (its top-left resolves to negative x /
+> `<html>` intercepts). The as-built smoke instead (a) closes the Voice/Comfort popovers + pauses
+> narration, then (b) in a single `evaluate` finds the first `.sentence` with a line box fully inside
+> the viewport and dispatches a `contextmenu` at a point inside that line — exercising the real
+> handler path (contextmenu → caretPositionFromPoint → wordAtOffset → popover) without depending on
+> Playwright hit-testing. The fixed-position popover is then driven with normal `fill`/`click`.
 
 **Step 3: Commit**
 
