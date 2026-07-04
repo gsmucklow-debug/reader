@@ -1428,6 +1428,98 @@ function setSpeedFactor(x) {
   saveSettings();
 }
 
+// --- Pronunciation overrides (right-click a word -> "sounds like…") -----------
+// Resolve the text node + char offset under a viewport point, across Chromium versions: the
+// standard caretPositionFromPoint (Blink >= Chrome 126 / Electron 33) or the older
+// caretRangeFromPoint. Returns { node, offset } for a TEXT node, else null.
+function caretNodeAt(x, y) {
+  let node = null;
+  let offset = 0;
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(x, y);
+    if (pos) { node = pos.offsetNode; offset = pos.offset; }
+  } else if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(x, y);
+    if (range) { node = range.startContainer; offset = range.startOffset; }
+  }
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+  return { node, offset };
+}
+
+function savePronunciation(word, respelling) {
+  const key = (word || '').toLowerCase().trim();
+  if (!key) return;
+  const value = (respelling || '').trim();
+  if (value) state.pronunciations[key] = value;
+  else delete state.pronunciations[key]; // empty respelling = removal
+  saveSettings();
+  if (state.player) state.player.reload(); // re-synth the current sentence with the fix
+}
+function removePronunciation(word) {
+  delete state.pronunciations[(word || '').toLowerCase()];
+  saveSettings();
+  if (state.player) state.player.reload();
+}
+// Test-only seam (mirrors window.__test_setEngine): drive a save without the native
+// right-click/caret gesture, which Playwright can't synthesize deterministically headless.
+window.__test_setPronunciation = (word, respelling) => savePronunciation(word, respelling);
+
+let pronouncePopoverEl = null;
+function closePronouncePopover() {
+  if (pronouncePopoverEl) { pronouncePopoverEl.remove(); pronouncePopoverEl = null; }
+}
+function openPronouncePopover(word, x, y) {
+  closePronouncePopover();
+  const key = word.toLowerCase();
+  const existing = state.pronunciations[key] || '';
+  const wrap = document.createElement('div');
+  wrap.className = 'pronounce-popover';
+  wrap.innerHTML = `
+    <p class="pronounce-title">Sounds like…</p>
+    <p class="pronounce-word"></p>
+    <input type="text" class="pronounce-input" placeholder="how it should sound" maxlength="80" />
+    <div class="pronounce-actions">
+      <button type="button" class="pronounce-save">Save</button>
+      ${existing ? '<button type="button" class="pronounce-remove">Remove</button>' : ''}
+      <button type="button" class="pronounce-cancel">Cancel</button>
+    </div>
+  `;
+  // Set the book word via textContent (never innerHTML) — book text must not inject markup.
+  wrap.querySelector('.pronounce-word').textContent = word;
+  const input = wrap.querySelector('.pronounce-input');
+  input.value = existing;
+  const save = () => { savePronunciation(key, input.value); closePronouncePopover(); };
+  wrap.querySelector('.pronounce-save').addEventListener('click', save);
+  wrap.querySelector('.pronounce-cancel').addEventListener('click', closePronouncePopover);
+  const removeBtn = wrap.querySelector('.pronounce-remove');
+  if (removeBtn) removeBtn.addEventListener('click', () => { removePronunciation(key); closePronouncePopover(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') save();
+    else if (e.key === 'Escape') closePronouncePopover();
+  });
+  document.body.appendChild(wrap);
+  pronouncePopoverEl = wrap;
+  // Position near the click, clamped inside the viewport.
+  const r = wrap.getBoundingClientRect();
+  wrap.style.left = `${Math.max(12, Math.min(x, window.innerWidth - r.width - 12))}px`;
+  wrap.style.top = `${Math.max(12, Math.min(y, window.innerHeight - r.height - 12))}px`;
+  input.focus();
+}
+
+readingEl.addEventListener('contextmenu', (e) => {
+  e.preventDefault(); // own the gesture; suppress any default menu
+  const caret = caretNodeAt(e.clientX, e.clientY);
+  if (!caret) { closePronouncePopover(); return; }
+  const found = window.WordAtOffset.wordAtOffset(caret.node.textContent, caret.offset);
+  if (!found) { closePronouncePopover(); return; }
+  openPronouncePopover(found.word, e.clientX, e.clientY);
+});
+
+// An outside click closes the pronounce popover (its own buttons are guarded).
+document.addEventListener('click', (e) => {
+  if (pronouncePopoverEl && !e.target.closest('.pronounce-popover')) closePronouncePopover();
+});
+
 // --- Wire the playback controls + keyboard + click-to-play ----------------
 const P2 = () => state.player;
 document.getElementById('play-pause').addEventListener('click', async (e) => {

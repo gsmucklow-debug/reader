@@ -205,6 +205,38 @@ input[type="range"] { accent-color: var(--accent); }
 .add-voice-status { margin: 0; font-size: 0.82rem; color: var(--ink-soft); }
 .add-voice-status.is-error { color: #b3261e; }
 
+/* Right-click "Sounds like…" pronunciation popover — a small floating panel positioned at the
+   click point (fixed, unlike the in-panel add-voice popover). */
+.pronounce-popover {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+.pronounce-title { margin: 0; font-size: 0.78rem; color: var(--ink-soft); }
+.pronounce-word { margin: 0; font-weight: 600; font-size: 1rem; color: var(--ink); }
+.pronounce-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.pronounce-actions { display: flex; gap: 8px; }
+.pronounce-actions button { padding: 5px 12px; font-size: 0.85rem; }
+.pronounce-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 /* ---- Stage ---- */
 #stage { flex: 1 1 auto; position: relative; overflow: hidden; min-height: 0; }
 
