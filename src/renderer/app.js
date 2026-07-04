@@ -48,6 +48,9 @@ const state = {
   // Voice Engine auto-launch (Windows-only): the folder containing python_embedded\python.exe
   // + start.py, persisted after the one-time folder-picker prompt. null until located.
   voiceEngineDir: null,
+  // Global "sounds-like" pronunciation overrides { lowercasedWord: respelling }. Applied at synth
+  // time in main (display text unchanged). Persisted in settings.json.
+  pronunciations: {},
 };
 
 // End-of-chapter pause presets → milliseconds. endChapterPauseMs() is injected into
@@ -88,9 +91,10 @@ function synthOpts() {
       cfgWeight: state.cfgWeight,
       temperature: state.temperature,
       speedFactor: state.speedFactor,
+      pronunciations: state.pronunciations,
     };
   }
-  return { voice: state.voice, speed: state.speed };
+  return { voice: state.voice, speed: state.speed, pronunciations: state.pronunciations };
 }
 
 function showDocument(doc, fileName) {
@@ -1118,6 +1122,7 @@ function gatherSettings() {
     expressiveMyVoices: state.myVoices,
     expressiveVoiceNames: state.expressiveVoiceNames,
     voiceEngineDir: state.voiceEngineDir,
+    pronunciations: state.pronunciations,
   };
 }
 
@@ -1199,6 +1204,9 @@ function applySettings(s) {
   }
   if (typeof s.voiceEngineDir === 'string') {
     state.voiceEngineDir = s.voiceEngineDir;
+  }
+  if (s.pronunciations && typeof s.pronunciations === 'object') {
+    state.pronunciations = s.pronunciations;
   }
   buildExpressiveVoiceList();
   // Engine last, after voice/params are in state, so the visible section + toggle match
