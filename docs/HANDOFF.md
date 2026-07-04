@@ -518,6 +518,42 @@ runs on Windows 11 + macOS (MacBook Pro M5).
   - **The user runs the packaged `.exe`, not `npm start`** (they will not use a terminal — hard requirement).
     Every change this session was shipped by rebuilding `dist/Reader-0.1.0-setup.exe` (NSIS). **Latest build
     22:25.** Any change needs a rebuild for the user to see it.
+- [x] **Pronunciation overrides (deterministic layer) — built, verified & MERGED to `master`
+  (2026-07-02, Windows; branch `pronunciation-overrides`).** Built this session via subagent-driven
+  development (Sonnet 5 implementers, Opus review gates); the later tasks were finished inline when the
+  account rate limit began failing subagent dispatch — every task still passed an independent review
+  (two Critical/real bugs caught: a prototype-chain `TypeError` in `applyPronunciations`, and a missing
+  `SETTINGS_KEYS` whitelist entry that would have silently dropped persistence). **The user can now
+  right-click any mispronounced word in the reader, type a "sounds-like" respelling, and every future
+  reading substitutes it — while the on-screen text is unchanged.** This is the **deterministic half**
+  of the pronunciation/expression work; the context-aware LLM pipeline (heteronyms + per-sentence
+  expression) remains a separate later phase. Design:
+  [`plans/2026-07-02-pronunciation-overrides-design.md`](./plans/2026-07-02-pronunciation-overrides-design.md);
+  plan (7 TDD tasks): [`plans/2026-07-02-pronunciation-overrides.md`](./plans/2026-07-02-pronunciation-overrides.md).
+  - **What shipped:** `src/main/pronounce.js` — pure `applyPronunciations(text, map)` (case-insensitive,
+    whole-word, single-pass, verbatim insert, prototype-safe), applied in the `synthesize` handler
+    **before `normalizeTTS`** so the clip cache keys on the respelled text (changed map → cold miss →
+    correct re-synth) and **both the Kokoro and expressive engines** inherit it with zero branch code.
+    `src/renderer/word-at-offset.js` — pure caret→word helper (dual-mode export). A **right-click
+    "Sounds like…" popover** (caret-at-point via `caretPositionFromPoint` w/ `caretRangeFromPoint`
+    fallback; word shown via `textContent`, no markup injection from book text; Save/Remove →
+    `saveSettings()` + `player.reload()`, mirroring `setVoice`). One global `pronunciations` map in
+    `settings.json` (added to `SETTINGS_KEYS`). **The sacred per-sentence DOM contract is untouched** —
+    no per-word spans; substitution happens only on the synth-text string in main.
+  - **Verified:** `npm test` → **163/163** (Task 1 `applyPronunciations` 11 + `word-at-offset` 7 +
+    prototype/apostrophe regressions); `npm run smoke` → **SMOKE OK** (real handler path:
+    contextmenu → caret → wordAtOffset → popover; respelling persists to `settings.json`; a synth call
+    writes the **respelled+normalized** clip to the cache — renderer→IPC→apply→cache); `npm run dist:win`
+    rebuilt **`dist/Reader-0.1.0-setup.exe` (2026-07-04 17:32)**; package gate
+    `node test/manual/verify-packaged.js` → **201644 bytes @ 24000 Hz** (new `./pronounce` require +
+    both new files confirmed in the asar). Final whole-feature review: **approve**, no Critical/Important.
+  - **Honest caveats / still manual:** (a) **by-ear**: that a respelling actually fixes the word is
+    ears-only — the user should right-click a word they've heard mispronounced, type e.g. `reeding`, and
+    confirm. (b) **Heteronyms out of scope** (a single global map can't disambiguate "read" reed/red) —
+    that's the LLM phase. (c) Accepted limits (documented): a word split across inline markup captures
+    only the partial token; the popover is `position:fixed` and doesn't reposition on scroll.
+  - **First remote push:** the user created **https://github.com/gsmucklow-debug/reader** — `origin` set;
+    `master` pushed after this merge (previously the repo was local-only).
 
 ---
 
@@ -529,10 +565,16 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > listen-test if any source changed since).
 > **✅ User by-ear pass done (2026-07-02): "all looks and sounds good"** — clone + preset voice quality
 > confirmed, and the prefetch 3→8 bump killed the inter-sentence gaps. That gate is closed.
+> **✅ Pronunciation overrides (deterministic layer) — built, verified & MERGED to `master`
+> (2026-07-02/04). `master` now pushed to https://github.com/gsmucklow-debug/reader.** Fresh
+> `dist/Reader-0.1.0-setup.exe` rebuilt 2026-07-04 17:32.
 > Next:
-> 1. **Write the plan for the local-LLM pronunciation & expression pre-processor** (see Open questions —
->    the user's idea; they'll run a local LLM). That's the agreed next feature.
-> 2. **Still open (not blocking): GPU-stability gate** — the crash-safety work reduced the kill-mid-op
+> 1. **User by-ear pass on pronunciation overrides** — right-click a word you've heard mispronounced,
+>    type a "sounds-like" respelling (e.g. `reeding`), confirm it fixes the word and survives a restart.
+> 2. **The local-LLM pronunciation & expression pre-processor** (see Open questions) — the ambitious
+>    Phase 2: a local LLM disambiguates heteronyms in context + drives per-sentence expression. The
+>    deterministic map just shipped is its fallback/override layer. **Write the plan next.**
+> 3. **Still open (not blocking): GPU-stability gate** — the crash-safety work reduced the kill-mid-op
 >    vector only; a driver update + a watched `nvidia-smi` run remains the real GPU-stability check.
 > **Hard constraint reconfirmed all session: the user will NOT use a terminal** — ship every change as a
 > rebuilt double-click `.exe`, never "run `npm start`."
