@@ -246,8 +246,11 @@ test('finds the word at its start and end offsets', () => {
   assert.strictEqual(wordAtOffset('the reading room', 11).word, 'reading'); // caret just after 'g'
 });
 
-test('returns null on whitespace', () => {
-  assert.strictEqual(wordAtOffset('the reading room', 3), null); // the space
+test('returns null in a wordless gap (both neighbours non-word)', () => {
+  // Note: a single space right after a word (e.g. index 11 above) resolves to that word via the
+  // look-behind rule — that's the "caret just after a word" case. A truly wordless spot needs
+  // non-word chars on BOTH sides, e.g. between two spaces here.
+  assert.strictEqual(wordAtOffset('hi  there', 3), null);
 });
 
 test('caret just after a word, before punctuation, still returns the word', () => {
