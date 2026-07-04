@@ -12,6 +12,8 @@ const os = require('node:os');
 const assert = require('node:assert');
 const { _electron: electron } = require('playwright');
 const { clipKey } = require('../../src/main/clip-cache');
+const { normalizeTTS } = require('../../src/main/tts-normalize');
+const { applyPronunciations } = require('../../src/main/pronounce');
 
 const ROOT = path.join(__dirname, '..', '..');
 const FIXTURE = path.join(ROOT, 'test', 'fixtures', 'alice.epub');
@@ -355,6 +357,68 @@ async function dropBook(win) {
   for (let i = 0; i < 120 && !has(previewFile); i++) await win.waitForTimeout(500); // up to 60s
   assert.ok(has(previewFile), `▶ preview should synthesize an af_bella clip on disk (${previewFile})`);
   console.log('  ✓ ▶ preview synthesized an af_bella sample through the real engine');
+
+  // --- Pronunciation overrides -------------------------------------------------
+  // Close any open Voice/Comfort popover (step 7d left the Voice panel open, which would intercept
+  // pointer events over the reading area) and pause narration so the page is static + clickable.
+  await win.evaluate(() => {
+    const c = document.getElementById('comfort-panel'); if (c) c.hidden = true;
+    const v = document.getElementById('voice-panel'); if (v) v.hidden = true;
+    const b = document.getElementById('play-pause');
+    if (b && b.getAttribute('aria-label') === 'Pause') b.click();
+  });
+  await win.waitForTimeout(300);
+
+  // (a) Open the popover by dispatching a contextmenu at a point computed from the currently-
+  //     highlighted sentence's RENDERED client rect. A coordinate right-click via Playwright is
+  //     unreliable in the translated multi-column paged view (the span's box can straddle a hidden
+  //     column), but getClientRects() reports the real post-transform glyph position, so the point
+  //     lands on a letter. This still exercises the real handler path:
+  //     contextmenu -> caretPositionFromPoint -> wordAtOffset -> popover.
+  const detectedWord = await win.evaluate(() => {
+    // Find the first sentence with a line box fully inside the viewport (in the paged view most
+    // spans are translated off-screen — negative x — so we can't assume any particular one is
+    // visible), then dispatch a contextmenu at a point inside that line so the caret lands on text.
+    for (const el of document.querySelectorAll('#reading .sentence')) {
+      for (const r of el.getClientRects()) {
+        if (r.width > 24 && r.height > 4 && r.left >= 0 && r.top >= 0
+            && r.right <= window.innerWidth && r.bottom <= window.innerHeight) {
+          const x = r.left + 20;
+          const y = r.top + r.height / 2;
+          el.dispatchEvent(new MouseEvent('contextmenu', { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+          const w = document.querySelector('.pronounce-popover .pronounce-word');
+          if (w) return w.textContent.trim();
+        }
+      }
+    }
+    return null;
+  });
+  assert.ok(detectedWord && /^[\p{L}\p{N}'’]+$/u.test(detectedWord),
+    `popover should open with a word token; got "${detectedWord}"`);
+  console.log('  ✓ contextmenu opened the pronunciation popover for:', detectedWord);
+
+  // (b) Type a respelling + Save -> it persists to settings.json under the lowercased word.
+  await win.fill('.pronounce-popover .pronounce-input', 'zzztest');
+  await win.click('.pronounce-popover .pronounce-save');
+  await win.waitForTimeout(600); // let the 250ms save debounce + write settle
+  const settingsPath = path.join(USERDATA, 'settings.json');
+  const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  assert.strictEqual(saved.pronunciations[detectedWord.toLowerCase()], 'zzztest',
+    'the saved respelling should be in settings.json');
+  console.log('  ✓ respelling saved to settings.json');
+
+  // (c) The map is APPLIED at synth time: synthesize a known sentence with a map and assert the
+  //     on-disk clip is keyed on the RESPELLED+normalized text (proves renderer->IPC->apply->cache).
+  const pText = 'Reading room.';
+  const pMap = { reading: 'reeding' };
+  const expectedClip = clipKey(normalizeTTS(applyPronunciations(pText, pMap)), 'af_heart', 1);
+  assert.ok(!has(expectedClip), 'respelled clip should not exist yet');
+  await win.evaluate(({ t, m }) => window.reader.synthesize(t, { voice: 'af_heart', speed: 1, pronunciations: m }), { t: pText, m: pMap });
+  for (let i = 0; i < 120 && !has(expectedClip); i++) await win.waitForTimeout(500);
+  assert.ok(has(expectedClip), `synth should write the respelled clip (${expectedClip})`);
+  console.log('  ✓ pronunciation map applied at synth time (respelled clip on disk)');
+
+  // (the Save in step (b) already closed the popover; nothing left open here)
 
   // Ensure narration is paused before the library loop test.
   await win.evaluate(() => {
