@@ -26,6 +26,10 @@ test('apostrophe words are one token', () => {
   assert.strictEqual(wordAtOffset("don't stop", 2).word, "don't");
 });
 
+test('typographic apostrophe words are one token', () => {
+  assert.strictEqual(wordAtOffset('it’s fine', 2).word, 'it’s');
+});
+
 test('out-of-range / empty returns null', () => {
   assert.strictEqual(wordAtOffset('', 0), null);
   assert.strictEqual(wordAtOffset('hi', -1), null);

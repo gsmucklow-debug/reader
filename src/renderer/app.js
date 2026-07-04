@@ -1510,6 +1510,9 @@ readingEl.addEventListener('contextmenu', (e) => {
   e.preventDefault(); // own the gesture; suppress any default menu
   const caret = caretNodeAt(e.clientX, e.clientY);
   if (!caret) { closePronouncePopover(); return; }
+  // We read only the caret's own text node. A word split across inline markup (e.g. read<i>ing</i>)
+  // yields the partial token here; the override then won't match the whole-word token at synth time
+  // — a rare, accepted limitation (wrapping every word in a span would break the sentence-DOM contract).
   const found = window.WordAtOffset.wordAtOffset(caret.node.textContent, caret.offset);
   if (!found) { closePronouncePopover(); return; }
   openPronouncePopover(found.word, e.clientX, e.clientY);
