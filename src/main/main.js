@@ -116,6 +116,9 @@ const SETTINGS_KEYS = [
   // Voice Engine auto-launch (Windows-only): the folder containing python_embedded\python.exe
   // + start.py. Persisted once picked via the folder-picker prompt; never hardcoded.
   'voiceEngineDir',
+  // Global "sounds-like" pronunciation overrides { lowercasedWord: respelling }, applied at synth
+  // time (display text unchanged). Without this the map is dropped by the whitelist and never persists.
+  'pronunciations',
 ];
 
 function createWindow() {
