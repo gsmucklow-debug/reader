@@ -578,8 +578,10 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > core**: built, verified & on `master` (pushed to https://github.com/gsmucklow-debug/reader) on
 > **Windows** (NSIS installer, fresh `dist/Reader-0.1.0-setup.exe` rebuilt 2026-07-04 17:32) **and macOS
 > arm64** (M5, user-confirmed "functionally identical apart from Chatterbox" — see "What's done").
-> Closed gates: expressive voice + cloning (by-ear "sounds good"), pronunciation overrides (built +
-> verified), and **Phase 1 AC#2 macOS — the last carryover — is now DONE.**
+> Closed gates: expressive voice + cloning (by-ear "sounds good"), Phase 1 AC#2 macOS (the last
+> carryover), and — **now closed 2026-07-05** — the **pronunciation-overrides by-ear pass ("tested and
+> sounded fine")** and the **Windows GPU-stability gate ("seems fine")**. Nothing on the core is
+> blocking.
 >
 > **▶ IMMEDIATE NEXT (user, 2026-07-05): discuss porting to Android for the Galaxy S24 Ultra — in a
 > FRESH chat.** This is a real research/scoping conversation, NOT a small task. Electron does not target
@@ -588,16 +590,16 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > Start with brainstorming; nothing is decided. The design constraints still hold: sentence-level
 > one-clip-per-sentence sync, calm/low-load UI, offline/free/private, no fiddly UX.
 >
-> Other open (not blocking, lower priority than the Android discussion):
-> 1. **User by-ear pass on pronunciation overrides** — right-click a word you've heard mispronounced,
->    type a "sounds-like" respelling (e.g. `reeding`), confirm it fixes the word and survives a restart.
+> **Parked by the user (2026-07-05) — do NOT pick these up without the user re-raising them:**
+> 1. ~~User by-ear pass on pronunciation overrides~~ — **✅ DONE 2026-07-05: "tested and sounded fine."**
 > 2. **The local-LLM pronunciation & expression pre-processor** (see Open questions) — the ambitious
->    Phase 2: a local LLM disambiguates heteronyms in context + drives per-sentence expression. The
->    deterministic map just shipped is its fallback/override layer.
-> 3. **dtype M5 measurement** — now runnable on the Mac (`test/manual/spike-dtype-sweep.js`); if the
->    q8→fp16 ~4× synth win holds on ARM, it's a cheap speedup (plan: `plans/dtype-validate-and-swap.md`).
-> 4. **GPU-stability gate (Windows)** — the crash-safety work reduced the kill-mid-op vector only; a
->    driver update + a watched `nvidia-smi` run remains the real check.
+>    next feature; **PARKED for now (user, 2026-07-05).** Deterministic map already shipped as its
+>    fallback/override layer.
+> 3. **dtype M5 measurement** — **PARKED for now (user, 2026-07-05).** Still runnable on the Mac later
+>    (`test/manual/spike-dtype-sweep.js`); if the q8→fp16 ~4× synth win holds on ARM it's a cheap
+>    speedup (plan: `plans/dtype-validate-and-swap.md`).
+> 4. ~~Windows GPU-stability gate~~ — **✅ user says "seems fine" (2026-07-05).** Crash-safety work
+>    holds in practice; no further action unless a wedge recurs.
 > **Hard constraint (desktop): the user will NOT use a terminal** — ship every change as a rebuilt
 > double-click installer, never "run `npm start`." (Android will need its own no-terminal delivery story.)
 
