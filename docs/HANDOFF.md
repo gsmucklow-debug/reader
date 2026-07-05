@@ -570,6 +570,24 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     of scope). And the **dtype M5 measurement** (`test/manual/spike-dtype-sweep.js`, does the q8→fp16 ~4×
     synth win hold on ARM?) is now runnable on the Mac — see the dtype follow-up in "Next up".
 
+- [x] **Android port — brainstormed, designed & spike-planned (2026-07-05).** In a fresh chat, ran the
+  brainstorming skill with the user and locked the architecture: **full offline app on the S24 Ultra ·
+  Capacitor WebView reusing ~90% of the code (renderer + 3 parsers + all pure logic port unchanged; only
+  TTS/file/storage edges are rewritten as Capacitor plugins) · the on-device Kokoro voice is the sole
+  go/no-go unknown · de-risk it with a spike delivered as a sideloaded APK.** Chatterbox/expressive-GPU
+  is out of scope for the phone (Kokoro-CPU is the phone voice, the desktop default anyway). Two docs
+  written & committed: design
+  [`plans/2026-07-05-android-port-design.md`](./plans/2026-07-05-android-port-design.md) and the 8-task
+  spike plan [`plans/2026-07-05-android-voice-spike.md`](./plans/2026-07-05-android-voice-spike.md).
+  - **Advisor-reviewed before finalizing** — folded in four feasibility details grounded in this repo's
+    own notes: run WASM inference in a **Web Worker** (the phone's `utilityProcess`; main-thread ORT
+    would falsely look unusable), the model+voice `.bin` loading **flips `fs`→`fetch`** in the WebView
+    (the Node build's `fs` path doesn't exist there), **start from a known-working browser Kokoro demo**
+    (not a blind Node-path port), and **verify the APK toolchain first**.
+  - **Phase-0 toolchain check run (2026-07-05):** box has Node v24 + JDK 24 only; **no Android SDK / no
+    Android Studio.** User is installing **Android Studio** (Standard). Nothing built yet — the spike is
+    blocked on that install, then it's the next gate. See "Next up → IMMEDIATE NEXT."
+
 ---
 
 ## Next up
@@ -583,12 +601,26 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > sounded fine")** and the **Windows GPU-stability gate ("seems fine")**. Nothing on the core is
 > blocking.
 >
-> **▶ IMMEDIATE NEXT (user, 2026-07-05): discuss porting to Android for the Galaxy S24 Ultra — in a
-> FRESH chat.** This is a real research/scoping conversation, NOT a small task. Electron does not target
-> Android, so this is an architecture question (e.g. Capacitor/Tauri-mobile/React-Native/a PWA, and
-> whether Kokoro-ONNX runs on-device via `onnxruntime-react-native`/WASM, or narration moves server-side).
-> Start with brainstorming; nothing is decided. The design constraints still hold: sentence-level
-> one-clip-per-sentence sync, calm/low-load UI, offline/free/private, no fiddly UX.
+> **▶ IMMEDIATE NEXT (updated 2026-07-05): Android port — brainstormed, designed & spike-planned; now
+> BLOCKED on the user installing Android Studio, then run the voice spike.** The scoping conversation
+> happened: decisions locked as **full offline app · Capacitor WebView (reuse ~90%) · on-device voice is
+> the go/no-go gate · spike delivered as a sideloaded APK**. Design:
+> [`plans/2026-07-05-android-port-design.md`](./plans/2026-07-05-android-port-design.md); spike plan (8
+> tasks): [`plans/2026-07-05-android-voice-spike.md`](./plans/2026-07-05-android-voice-spike.md).
+>   - **Phase-0 toolchain check done (2026-07-05):** this Windows box has Node + JDK 24 only — **no
+>     Android SDK, no Android Studio**. User chose to install **Android Studio** (Standard setup bundles
+>     SDK + a compatible JBR JDK — sidesteps the JDK-24/AGP incompatibility — + Gradle). **Re-run the
+>     toolchain check once it's installed**, then start the spike.
+>   - **The spike is the gate:** measure kokoro-js via onnxruntime-web in the real WebView on the S24
+>     Ultra — cold synth latency + realtime factor + quality by ear, sweeping dtype (q8/q4f16/fp16 — also
+>     settles the parked desktop dtype question on ARM) × execution provider. **Three prerequisites make
+>     the number truthful (baked into the plan): inference in a Web Worker (the phone's `utilityProcess`),
+>     model+voices as `fetch`able local assets (`fs`→`fetch`), and starting from a known-working browser
+>     Kokoro demo.** Nothing past the spike is built until it returns an acceptable number.
+>   - Design constraints unchanged: sentence-level one-clip-per-sentence sync, calm/low-load UI,
+>     offline/free/private, no fiddly UX. Chatterbox/expressive is desktop-GPU-only → out of scope for
+>     the phone (Kokoro-CPU is the phone voice). Read-along **keep-screen-awake** now; screen-off/pocket
+>     listening (foreground service) is a deferred later phase.
 >
 > **Parked by the user (2026-07-05) — do NOT pick these up without the user re-raising them:**
 > 1. ~~User by-ear pass on pronunciation overrides~~ — **✅ DONE 2026-07-05: "tested and sounded fine."**
