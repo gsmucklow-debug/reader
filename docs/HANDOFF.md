@@ -554,30 +554,52 @@ runs on Windows 11 + macOS (MacBook Pro M5).
     only the partial token; the popover is `position:fixed` and doesn't reposition on scroll.
   - **First remote push:** the user created **https://github.com/gsmucklow-debug/reader** — `origin` set;
     `master` pushed after this merge (previously the repo was local-only).
+- [x] **macOS (arm64) build — DONE & user-confirmed (2026-07-05, on the MacBook Pro M5).** The user
+  cloned `master` from GitHub and produced a working macOS build. **"Functionally identical" to Windows
+  apart from Chatterbox** — i.e. reading (EPUB/Markdown/DOCX), library + auto-resume, the Kokoro voice +
+  all voice/speed/pause settings, pronunciation overrides, fonts, themes, and view modes all work on the
+  M5. **This closes Phase 1 AC#2 (macOS arm64) — the last open acceptance criterion, carried since
+  2026-06-25 — and retires the "macOS still unbuilt (Phase 1 carryover)" caveat that trails every prior
+  entry above.** The app is now cross-platform as designed.
+  - **Expected gap (by design, NOT a bug):** the **expressive GPU voice (Chatterbox) does not run on
+    macOS** — it's Windows/NVIDIA-only; the M5 would need a separate MLX/CoreML runtime (a future
+    project, not a port). On the Mac the Expressive option is simply unavailable; **Kokoro-CPU-offline is
+    the voice**, which is the default anyway. Everything else is identical.
+  - **Still worth a one-time check (not blocking):** first launch is unsigned → **right-click→Open** to
+    clear Gatekeeper (a *notarized* build would need the unpacked `.node` code-signed — deliberately out
+    of scope). And the **dtype M5 measurement** (`test/manual/spike-dtype-sweep.js`, does the q8→fp16 ~4×
+    synth win hold on ARM?) is now runnable on the Mac — see the dtype follow-up in "Next up".
 
 ---
 
 ## Next up
 
-> **▶ RESUME HERE (updated 2026-07-02).** The cloning + auto-launch + crash-safety session is now
-> **MERGED to master** (clean fast-forward `4faef51 → 357b7c4`, branch deleted, 145/145 re-verified).
-> Everything works end-to-end; packaged `.exe` was rebuilt 2026-07-01 22:25 (rebuild before the next
-> listen-test if any source changed since).
-> **✅ User by-ear pass done (2026-07-02): "all looks and sounds good"** — clone + preset voice quality
-> confirmed, and the prefetch 3→8 bump killed the inter-sentence gaps. That gate is closed.
-> **✅ Pronunciation overrides (deterministic layer) — built, verified & MERGED to `master`
-> (2026-07-02/04). `master` now pushed to https://github.com/gsmucklow-debug/reader.** Fresh
-> `dist/Reader-0.1.0-setup.exe` rebuilt 2026-07-04 17:32.
-> Next:
+> **▶ RESUME HERE (updated 2026-07-05).** The reader is **cross-platform and feature-complete for its
+> core**: built, verified & on `master` (pushed to https://github.com/gsmucklow-debug/reader) on
+> **Windows** (NSIS installer, fresh `dist/Reader-0.1.0-setup.exe` rebuilt 2026-07-04 17:32) **and macOS
+> arm64** (M5, user-confirmed "functionally identical apart from Chatterbox" — see "What's done").
+> Closed gates: expressive voice + cloning (by-ear "sounds good"), pronunciation overrides (built +
+> verified), and **Phase 1 AC#2 macOS — the last carryover — is now DONE.**
+>
+> **▶ IMMEDIATE NEXT (user, 2026-07-05): discuss porting to Android for the Galaxy S24 Ultra — in a
+> FRESH chat.** This is a real research/scoping conversation, NOT a small task. Electron does not target
+> Android, so this is an architecture question (e.g. Capacitor/Tauri-mobile/React-Native/a PWA, and
+> whether Kokoro-ONNX runs on-device via `onnxruntime-react-native`/WASM, or narration moves server-side).
+> Start with brainstorming; nothing is decided. The design constraints still hold: sentence-level
+> one-clip-per-sentence sync, calm/low-load UI, offline/free/private, no fiddly UX.
+>
+> Other open (not blocking, lower priority than the Android discussion):
 > 1. **User by-ear pass on pronunciation overrides** — right-click a word you've heard mispronounced,
 >    type a "sounds-like" respelling (e.g. `reeding`), confirm it fixes the word and survives a restart.
 > 2. **The local-LLM pronunciation & expression pre-processor** (see Open questions) — the ambitious
 >    Phase 2: a local LLM disambiguates heteronyms in context + drives per-sentence expression. The
->    deterministic map just shipped is its fallback/override layer. **Write the plan next.**
-> 3. **Still open (not blocking): GPU-stability gate** — the crash-safety work reduced the kill-mid-op
->    vector only; a driver update + a watched `nvidia-smi` run remains the real GPU-stability check.
-> **Hard constraint reconfirmed all session: the user will NOT use a terminal** — ship every change as a
-> rebuilt double-click `.exe`, never "run `npm start`."
+>    deterministic map just shipped is its fallback/override layer.
+> 3. **dtype M5 measurement** — now runnable on the Mac (`test/manual/spike-dtype-sweep.js`); if the
+>    q8→fp16 ~4× synth win holds on ARM, it's a cheap speedup (plan: `plans/dtype-validate-and-swap.md`).
+> 4. **GPU-stability gate (Windows)** — the crash-safety work reduced the kill-mid-op vector only; a
+>    driver update + a watched `nvidia-smi` run remains the real check.
+> **Hard constraint (desktop): the user will NOT use a terminal** — ship every change as a rebuilt
+> double-click installer, never "run `npm start`." (Android will need its own no-terminal delivery story.)
 
 **Phases 2, 2.5, and 2.6 are built & planner-verified on Windows (Phase 2.6 also picked up two
 user-reported bug fixes). The voice-latency spike has been run; findings recorded (GPU = dead end; the
@@ -670,12 +692,13 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
      gated on an M5 measurement); **pronunciation overrides** (the last logged Phase 4 item — no plan yet);
      app **rename** (open question below). *(NSIS installer — done & merged 2026-06-29, see "What's
      done".)* **Pick one with the user before planning.**
-9. **Only after the Windows version is finished: the macOS build** (deferred by user decision
-   2026-06-27 — don't start it before then). On the M5 run `npm install` then `npm run dist:mac`,
-   right-click→Open, drag in an EPUB, press Play. `onnxruntime-node` pulls the arm64 binary at
-   `npm install`; the build lands the model at `Reader.app/Contents/Resources/assets/models` (matches
-   `main.js`). **Note:** a *notarized* mac build must code-sign the unpacked `.node` or Gatekeeper
-   blocks launch — out of scope, but a *loud* failure. Closes the last Phase 1 carryover.
+9. **✅ macOS build — DONE & user-confirmed (2026-07-05).** The user cloned `master` from GitHub on the
+   M5 and built it; **"functionally identical apart from Chatterbox."** Recipe (for reference): `npm
+   install` (pulls the arm64 `onnxruntime-node` binary) → `node scripts/fetch-model.js` (model is
+   gitignored) → `npm run dist:mac` → right-click→Open (unsigned; a *notarized* build would need the
+   unpacked `.node` code-signed — out of scope). Expressive GPU voice (Chatterbox) is Windows/NVIDIA-only
+   and unavailable on Mac by design; Kokoro-CPU is the Mac voice. **Closes the last Phase 1 carryover —
+   see the "What's done" macOS entry.**
 
 > **Carry into Phase 3 (deferred items, by design):** per-book reading-position resume and **per-book
 > voice/speed memory** (the clip cache is global/content-addressed today, now keyed by voice+speed —
@@ -743,6 +766,25 @@ Windows version is finished** (user decision 2026-06-27) — don't start the Mac
 
 ## Open questions / things to revisit later
 
+- **▶ Android port for the Galaxy S24 Ultra (user's next topic, 2026-07-05 — to be discussed in a fresh
+  chat; NOTHING decided).** The desktop app is Electron, which **does not target Android**, so this is a
+  genuine architecture decision, not a repackage. Start with **brainstorming**. Threads to explore:
+  - **Shell options:** Capacitor (wrap the existing renderer HTML/JS as a WebView app — likely the least
+    rewrite), a PWA (installable, but background audio + file access are weaker), Tauri-mobile (early),
+    or a React-Native rewrite (most native, most work). The renderer is already vanilla JS with clean
+    seams, which favors a WebView/Capacitor approach.
+  - **The voice is the hard part.** Kokoro runs today via `onnxruntime-node` (a desktop native binary) in
+    a utilityProcess — that exact path won't exist on Android. Options: `onnxruntime-react-native` /
+    ORT-mobile or WASM on-device (does the 82M model + q8/other dtype run acceptably on the S24's CPU/NPU?
+    — ties into the **dtype** work), OR move synthesis server-side (breaks offline/free/private — a real
+    tension with the design constraints). **The one-clip-per-sentence, sentence-level-sync design is
+    portable and should be kept.** Expressive/Chatterbox is desktop-GPU-only and out of scope for phones.
+  - **Constraints that still apply:** calm/low-load UI, offline/free/private, auto-resume, no fiddly UX,
+    and a **no-terminal delivery story** (sideload an APK / Play Store — decide how the user installs).
+  - Cross-platform reuse: parsing (`jszip`/`cheerio`, `marked`, `mammoth`) and all the pure logic
+    (`split-sentences`, `reading-cursor`, `player`, `paginate`, `pronounce`, `word-at-offset`) are plain
+    JS and should port with little/no change; the Electron-specific edges (main process, IPC, native TTS,
+    file dialogs, packaging) are what need rethinking.
 - App name — currently just "Reader" (working title). Pick a real one before Phase 3 polish.
   **Deferred 2026-06-27 — "rethink later."** Brainstormed direction: real, plain word in the
   *voice / being-read-to* lane; might be shared publicly (so distinctiveness + claimable
