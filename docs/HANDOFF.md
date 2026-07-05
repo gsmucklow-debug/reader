@@ -625,6 +625,9 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 >     (native); **in WASM the gap is only ~1.4×** (q8 RTF 0.72 vs fp16 0.52, desktop). Since q8 is already
 >     local + smallest, **q8 is the front-runner for the Android bundle** — opposite of the native call.
 >     Native decision untouched. The S24 (ARM) is a third backend → Phase B confirms.
+>   - **✅ DTYPE DECIDED FOR ANDROID = q8 (user by-ear, 2026-07-05): "q8 is good enough."** Compared the
+>     af_heart q8/q4f16/fp16 sample WAVs; q8 quality is fine. So **ship q8 on Android** (smallest bundle,
+>     already local). Phase B now only needs to confirm q8's *speed* on the phone — quality is settled.
 >   - **⚠️ NOT a go yet — these are desktop, single-thread WASM.** RTF 0.5–0.7 here; the S24 is slower and
 >     could push RTF >1.0 (breaks continuous play). Threading (COEP/SharedArrayBuffer in the WebView) was
 >     never confirmed engaged. **Speed is unqualified until Phase B.**
