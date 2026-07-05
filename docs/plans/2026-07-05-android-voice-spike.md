@@ -170,8 +170,13 @@ still generates with **zero network requests**. Commit `spike: model+voices from
 
 ## Phase B — Package as a Capacitor APK and measure on the S24
 
-> Re-run the toolchain check (JDK via Android Studio JBR, `%LOCALAPPDATA%/Android/Sdk`, `adb`) and
-> confirm it resolves before this phase.
+> Toolchain confirmed present (2026-07-05): Android Studio installed, SDK `android-36.1` +
+> build-tools 36.1.0/37.0.0 at `%LOCALAPPDATA%/Android/Sdk`, bundled JBR = **OpenJDK 21**, `adb` 1.0.41.
+>
+> **⚠️ Build-time gotcha:** the system `java` on PATH is **JDK 24**, which the Android Gradle Plugin
+> rejects. Before any `gradlew` / `npx cap` build, point `JAVA_HOME` at the Android Studio JBR (JDK 21):
+> `$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"` (PowerShell). Otherwise Gradle picks
+> up JDK 24 and fails.
 
 ### Task 4: Wrap the web page in a Capacitor project
 

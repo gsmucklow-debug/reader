@@ -601,16 +601,20 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 > sounded fine")** and the **Windows GPU-stability gate ("seems fine")**. Nothing on the core is
 > blocking.
 >
-> **▶ IMMEDIATE NEXT (updated 2026-07-05): Android port — brainstormed, designed & spike-planned; now
-> BLOCKED on the user installing Android Studio, then run the voice spike.** The scoping conversation
-> happened: decisions locked as **full offline app · Capacitor WebView (reuse ~90%) · on-device voice is
-> the go/no-go gate · spike delivered as a sideloaded APK**. Design:
+> **▶ IMMEDIATE NEXT (updated 2026-07-05): Android port — brainstormed, designed & spike-planned;
+> toolchain now installed; READY to run the voice spike.** The scoping conversation happened: decisions
+> locked as **full offline app · Capacitor WebView (reuse ~90%) · on-device voice is the go/no-go gate ·
+> spike delivered as a sideloaded APK**. Design:
 > [`plans/2026-07-05-android-port-design.md`](./plans/2026-07-05-android-port-design.md); spike plan (8
 > tasks): [`plans/2026-07-05-android-voice-spike.md`](./plans/2026-07-05-android-voice-spike.md).
->   - **Phase-0 toolchain check done (2026-07-05):** this Windows box has Node + JDK 24 only — **no
->     Android SDK, no Android Studio**. User chose to install **Android Studio** (Standard setup bundles
->     SDK + a compatible JBR JDK — sidesteps the JDK-24/AGP incompatibility — + Gradle). **Re-run the
->     toolchain check once it's installed**, then start the spike.
+>   - **Phase-0 toolchain: DONE (2026-07-05).** Android Studio installed; SDK `android-36.1` +
+>     build-tools 36.1.0/37.0.0, bundled JBR = **OpenJDK 21** (AGP-compatible), `adb` 1.0.41 — all
+>     verified present. **⚠️ Build gotcha:** system `java` on PATH is JDK 24 (AGP rejects it) — set
+>     `JAVA_HOME` to `C:\Program Files\Android\Android Studio\jbr` before any Gradle/cap build (recorded
+>     in the spike plan's Phase B).
+>   - **Next action: execute the spike.** Phase A (Tasks 1–3) is a desktop-Chrome pre-flight that needs
+>     no Android Studio (proves the kokoro-js/WASM JS stack + offline `fs`→`fetch` asset loading); Phase
+>     B (Tasks 4–7) packages the APK and measures on the S24; Phase C (Task 8) writes findings + go/no-go.
 >   - **The spike is the gate:** measure kokoro-js via onnxruntime-web in the real WebView on the S24
 >     Ultra — cold synth latency + realtime factor + quality by ear, sweeping dtype (q8/q4f16/fp16 — also
 >     settles the parked desktop dtype question on ARM) × execution provider. **Three prerequisites make
