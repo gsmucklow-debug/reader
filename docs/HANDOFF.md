@@ -612,9 +612,26 @@ runs on Windows 11 + macOS (MacBook Pro M5).
 >     verified present. **⚠️ Build gotcha:** system `java` on PATH is JDK 24 (AGP rejects it) — set
 >     `JAVA_HOME` to `C:\Program Files\Android\Android Studio\jbr` before any Gradle/cap build (recorded
 >     in the spike plan's Phase B).
->   - **Next action: execute the spike.** Phase A (Tasks 1–3) is a desktop-Chrome pre-flight that needs
->     no Android Studio (proves the kokoro-js/WASM JS stack + offline `fs`→`fetch` asset loading); Phase
->     B (Tasks 4–7) packages the APK and measures on the S24; Phase C (Task 8) writes findings + go/no-go.
+>   - **Phase A (Tasks 1–3): DONE & proven (2026-07-05, desktop pre-flight).** Built the spike repo
+>     (`f:/Coding Projects/reader-android-spike/`, separate git) and drove it headless via the Playwright
+>     MCP browser. Proven: (1) **the stack runs** — kokoro-js web build + ORT-web WASM loads Kokoro-82M,
+>     phonemizes, emits valid 24 kHz WAV; (2) **inference is NON-BLOCKING in a Web Worker** (main-thread
+>     tick meter: 33 ms max gap across ~19 s of synth); (3) **fully OFFLINE from local bundled assets** —
+>     with Cache Storage cleared, a non-default voice (`bf_emma`) loads+synths with **0 remote fetches**
+>     (`fs`→`fetch` closed via a worker fetch-rewrite; production ships it as a Service Worker). Findings:
+>     [`plans/2026-07-05-android-voice-spike-phaseA-findings.md`](./plans/2026-07-05-android-voice-spike-phaseA-findings.md).
+>     Ear-check WAVs for the user at `reader-android-spike/samples/` (af_heart q8/q4f16/fp16 + bf_emma + am_michael).
+>   - **Dtype finding (NEW, not a contradiction):** the parked ~4× q8-slowdown was `onnxruntime-node`
+>     (native); **in WASM the gap is only ~1.4×** (q8 RTF 0.72 vs fp16 0.52, desktop). Since q8 is already
+>     local + smallest, **q8 is the front-runner for the Android bundle** — opposite of the native call.
+>     Native decision untouched. The S24 (ARM) is a third backend → Phase B confirms.
+>   - **⚠️ NOT a go yet — these are desktop, single-thread WASM.** RTF 0.5–0.7 here; the S24 is slower and
+>     could push RTF >1.0 (breaks continuous play). Threading (COEP/SharedArrayBuffer in the WebView) was
+>     never confirmed engaged. **Speed is unqualified until Phase B.**
+>   - **Next action: Phase B (Tasks 4–7) — needs the physical S24.** Wrap the spike stack in a Capacitor
+>     APK (set `JAVA_HOME`→Studio JBR), sideload, sweep dtype × execution provider (threaded WASM + WebGPU
+>     if exposed), measure RTF + cold latency + ear quality **on the phone**. Then Phase C (Task 8) = final
+>     go/no-go. Natural split: the planner builds the APK; the measurement is the user's (their phone).
 >   - **The spike is the gate:** measure kokoro-js via onnxruntime-web in the real WebView on the S24
 >     Ultra — cold synth latency + realtime factor + quality by ear, sweeping dtype (q8/q4f16/fp16 — also
 >     settles the parked desktop dtype question on ARM) × execution provider. **Three prerequisites make
